@@ -8,10 +8,7 @@ from ._utils import convert_boxes_to_roi_format, check_roi_boxes_shape
 
 
 def ps_roi_pool(
-    input: Tensor,
-    boxes: Tensor,
-    output_size: int,
-    spatial_scale: float = 1.0,
+    input: Tensor, boxes: Tensor, output_size: int, spatial_scale: float = 1.0,
 ) -> Tensor:
     """
     Performs Position-Sensitive Region of Interest (RoI) Pool operator
@@ -41,9 +38,9 @@ def ps_roi_pool(
     output_size = _pair(output_size)
     if not isinstance(rois, torch.Tensor):
         rois = convert_boxes_to_roi_format(rois)
-    output, _ = torch.ops.torchvision.ps_roi_pool(input, rois, spatial_scale,
-                                                  output_size[0],
-                                                  output_size[1])
+    output, _ = torch.ops.torchvision.ps_roi_pool(
+        input, rois, spatial_scale, output_size[0], output_size[1]
+    )
     return output
 
 
@@ -51,6 +48,7 @@ class PSRoIPool(nn.Module):
     """
     See :func:`ps_roi_pool`.
     """
+
     def __init__(self, output_size: int, spatial_scale: float):
         super(PSRoIPool, self).__init__()
         self.output_size = output_size
@@ -60,8 +58,8 @@ class PSRoIPool(nn.Module):
         return ps_roi_pool(input, rois, self.output_size, self.spatial_scale)
 
     def __repr__(self) -> str:
-        tmpstr = self.__class__.__name__ + '('
-        tmpstr += 'output_size=' + str(self.output_size)
-        tmpstr += ', spatial_scale=' + str(self.spatial_scale)
-        tmpstr += ')'
+        tmpstr = self.__class__.__name__ + "("
+        tmpstr += "output_size=" + str(self.output_size)
+        tmpstr += ", spatial_scale=" + str(self.spatial_scale)
+        tmpstr += ")"
         return tmpstr

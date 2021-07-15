@@ -1,21 +1,21 @@
-'''
+"""
     Pytorch adaptation of https://omoindrot.github.io/triplet-loss
     https://github.com/omoindrot/tensorflow-triplet-loss
-'''
+"""
 import torch
 import torch.nn as nn
 
 
 class TripletMarginLoss(nn.Module):
-    def __init__(self, margin=1.0, p=2., mining='batch_all'):
+    def __init__(self, margin=1.0, p=2.0, mining="batch_all"):
         super(TripletMarginLoss, self).__init__()
         self.margin = margin
         self.p = p
         self.mining = mining
 
-        if mining == 'batch_all':
+        if mining == "batch_all":
             self.loss_fn = batch_all_triplet_loss
-        if mining == 'batch_hard':
+        if mining == "batch_hard":
             self.loss_fn = batch_hard_triplet_loss
 
     def forward(self, embeddings, labels):
@@ -35,7 +35,9 @@ def batch_hard_triplet_loss(labels, embeddings, margin, p):
 
     # Add max value in each row to invalid negatives
     max_anchor_negative_dist, _ = pairwise_dist.max(1, keepdim=True)
-    anchor_negative_dist = pairwise_dist + max_anchor_negative_dist * (1.0 - mask_anchor_negative)
+    anchor_negative_dist = pairwise_dist + max_anchor_negative_dist * (
+        1.0 - mask_anchor_negative
+    )
 
     # hardest negative for every anchor
     hardest_negative_dist, _ = anchor_negative_dist.min(1, keepdim=True)
@@ -67,7 +69,9 @@ def batch_all_triplet_loss(labels, embeddings, margin, p):
     num_positive_triplets = valid_triplets.size(0)
     num_valid_triplets = mask.sum()
 
-    fraction_positive_triplets = num_positive_triplets / (num_valid_triplets.float() + 1e-16)
+    fraction_positive_triplets = num_positive_triplets / (
+        num_valid_triplets.float() + 1e-16
+    )
 
     # Get final mean triplet loss over the positive valid triplets
     triplet_loss = triplet_loss.sum() / (num_positive_triplets + 1e-16)

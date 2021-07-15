@@ -61,7 +61,9 @@ class PKSampler(Sampler):
         while len(group_samples_remaining) > self.p:
             # Select p groups at random from valid/remaining groups
             group_ids = list(group_samples_remaining.keys())
-            selected_group_idxs = torch.multinomial(torch.ones(len(group_ids)), self.p).tolist()
+            selected_group_idxs = torch.multinomial(
+                torch.ones(len(group_ids)), self.p
+            ).tolist()
             for i in selected_group_idxs:
                 group_id = group_ids[i]
                 group = self.groups[group_id]

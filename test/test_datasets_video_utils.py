@@ -32,30 +32,19 @@ def get_list_of_videos(num_videos=5, sizes=None, fps=None):
 
 
 class TestVideo:
-
     def test_unfold(self):
         a = torch.arange(7)
 
         r = unfold(a, 3, 3, 1)
-        expected = torch.tensor([
-            [0, 1, 2],
-            [3, 4, 5],
-        ])
+        expected = torch.tensor([[0, 1, 2], [3, 4, 5],])
         assert_equal(r, expected, check_stride=False)
 
         r = unfold(a, 3, 2, 1)
-        expected = torch.tensor([
-            [0, 1, 2],
-            [2, 3, 4],
-            [4, 5, 6]
-        ])
+        expected = torch.tensor([[0, 1, 2], [2, 3, 4], [4, 5, 6]])
         assert_equal(r, expected, check_stride=False)
 
         r = unfold(a, 3, 2, 2)
-        expected = torch.tensor([
-            [0, 2, 4],
-            [2, 4, 6],
-        ])
+        expected = torch.tensor([[0, 2, 4], [2, 4, 6],])
         assert_equal(r, expected, check_stride=False)
 
     @pytest.mark.skipif(not io.video._av_available(), reason="this test requires av")
@@ -63,7 +52,9 @@ class TestVideo:
         with get_list_of_videos(num_videos=3) as video_list:
             video_clips = VideoClips(video_list, 5, 5, num_workers=2)
             assert video_clips.num_clips() == 1 + 2 + 3
-            for i, (v_idx, c_idx) in enumerate([(0, 0), (1, 0), (1, 1), (2, 0), (2, 1), (2, 2)]):
+            for i, (v_idx, c_idx) in enumerate(
+                [(0, 0), (1, 0), (1, 1), (2, 0), (2, 1), (2, 2)]
+            ):
                 video_idx, clip_idx = video_clips.get_clip_location(i)
                 assert video_idx == v_idx
                 assert clip_idx == c_idx
@@ -84,10 +75,14 @@ class TestVideo:
 
     @pytest.mark.skipif(not io.video._av_available(), reason="this test requires av")
     def test_video_clips_custom_fps(self):
-        with get_list_of_videos(num_videos=3, sizes=[12, 12, 12], fps=[3, 4, 6]) as video_list:
+        with get_list_of_videos(
+            num_videos=3, sizes=[12, 12, 12], fps=[3, 4, 6]
+        ) as video_list:
             num_frames = 4
             for fps in [1, 3, 4, 10]:
-                video_clips = VideoClips(video_list, num_frames, num_frames, fps, num_workers=2)
+                video_clips = VideoClips(
+                    video_list, num_frames, num_frames, fps, num_workers=2
+                )
                 for i in range(video_clips.num_clips()):
                     video, audio, info, video_idx = video_clips.get_clip(i)
                     assert video.shape[0] == num_frames
@@ -101,9 +96,12 @@ class TestVideo:
         orig_fps = 30
         duration = float(len(video_pts)) / orig_fps
         new_fps = 13
-        clips, idxs = VideoClips.compute_clips_for_video(video_pts, num_frames, num_frames,
-                                                         orig_fps, new_fps)
-        resampled_idxs = VideoClips._resample_video_idx(int(duration * new_fps), orig_fps, new_fps)
+        clips, idxs = VideoClips.compute_clips_for_video(
+            video_pts, num_frames, num_frames, orig_fps, new_fps
+        )
+        resampled_idxs = VideoClips._resample_video_idx(
+            int(duration * new_fps), orig_fps, new_fps
+        )
         assert len(clips) == 1
         assert_equal(clips, idxs)
         assert_equal(idxs[0], resampled_idxs)
@@ -113,9 +111,12 @@ class TestVideo:
         orig_fps = 30
         duration = float(len(video_pts)) / orig_fps
         new_fps = 12
-        clips, idxs = VideoClips.compute_clips_for_video(video_pts, num_frames, num_frames,
-                                                         orig_fps, new_fps)
-        resampled_idxs = VideoClips._resample_video_idx(int(duration * new_fps), orig_fps, new_fps)
+        clips, idxs = VideoClips.compute_clips_for_video(
+            video_pts, num_frames, num_frames, orig_fps, new_fps
+        )
+        resampled_idxs = VideoClips._resample_video_idx(
+            int(duration * new_fps), orig_fps, new_fps
+        )
         assert len(clips) == 3
         assert_equal(clips, idxs)
         assert_equal(idxs.flatten(), resampled_idxs)
@@ -125,11 +126,12 @@ class TestVideo:
         orig_fps = 30
         new_fps = 13
         with pytest.warns(UserWarning):
-            clips, idxs = VideoClips.compute_clips_for_video(video_pts, num_frames, num_frames,
-                                                             orig_fps, new_fps)
+            clips, idxs = VideoClips.compute_clips_for_video(
+                video_pts, num_frames, num_frames, orig_fps, new_fps
+            )
         assert len(clips) == 0
         assert len(idxs) == 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pytest.main([__file__])

@@ -68,7 +68,8 @@ def resolve_redirects(max_hops=3):
                 return fn(url, *args, **kwargs)
 
             request_attrs = {
-                attr: getattr(request, attr) for attr in ("data", "headers", "origin_req_host", "unverifiable")
+                attr: getattr(request, attr)
+                for attr in ("data", "headers", "origin_req_host", "unverifiable")
             }
             # the 'method' attribute does only exist if the request was created with it
             if hasattr(request, "method"):
@@ -86,14 +87,13 @@ urlopen = resolve_redirects()(urlopen)
 
 @contextlib.contextmanager
 def log_download_attempts(
-    urls_and_md5s=None,
-    file="utils",
-    patch=True,
-    mock_auxiliaries=None,
+    urls_and_md5s=None, file="utils", patch=True, mock_auxiliaries=None,
 ):
     def add_mock(stack, name, file, **kwargs):
         try:
-            return stack.enter_context(unittest.mock.patch(f"torchvision.datasets.{file}.{name}", **kwargs))
+            return stack.enter_context(
+                unittest.mock.patch(f"torchvision.datasets.{file}.{name}", **kwargs)
+            )
         except AttributeError as error:
             if file != "utils":
                 return add_mock(stack, name, "utils", **kwargs)
@@ -106,9 +106,14 @@ def log_download_attempts(
         mock_auxiliaries = patch
 
     with contextlib.ExitStack() as stack:
-        url_mock = add_mock(stack, "download_url", file, wraps=None if patch else download_url)
+        url_mock = add_mock(
+            stack, "download_url", file, wraps=None if patch else download_url
+        )
         google_drive_mock = add_mock(
-            stack, "download_file_from_google_drive", file, wraps=None if patch else download_file_from_google_drive
+            stack,
+            "download_file_from_google_drive",
+            file,
+            wraps=None if patch else download_file_from_google_drive,
         )
 
         if mock_auxiliaries:
@@ -155,7 +160,9 @@ def assert_server_response_ok():
     except URLError as error:
         raise AssertionError("The request timed out.") from error
     except HTTPError as error:
-        raise AssertionError(f"The server returned {error.code}: {error.reason}.") from error
+        raise AssertionError(
+            f"The server returned {error.code}: {error.reason}."
+        ) from error
     except RecursionError as error:
         raise AssertionError(str(error)) from error
 
@@ -190,7 +197,8 @@ class DownloadConfig:
 
 def make_download_configs(urls_and_md5s, name=None):
     return [
-        DownloadConfig(url, md5=md5, id=f"{name}, {url}" if name is not None else None) for url, md5 in urls_and_md5s
+        DownloadConfig(url, md5=md5, id=f"{name}, {url}" if name is not None else None)
+        for url, md5 in urls_and_md5s
     ]
 
 
@@ -223,29 +231,41 @@ def places365():
     return itertools.chain(
         *[
             collect_download_configs(
-                lambda: datasets.Places365(ROOT, split=split, small=small, download=True),
+                lambda: datasets.Places365(
+                    ROOT, split=split, small=small, download=True
+                ),
                 name=f"Places365, {split}, {'small' if small else 'large'}",
                 file="places365",
             )
-            for split, small in itertools.product(("train-standard", "train-challenge", "val"), (False, True))
+            for split, small in itertools.product(
+                ("train-standard", "train-challenge", "val"), (False, True)
+            )
         ]
     )
 
 
 def caltech101():
-    return collect_download_configs(lambda: datasets.Caltech101(ROOT, download=True), name="Caltech101")
+    return collect_download_configs(
+        lambda: datasets.Caltech101(ROOT, download=True), name="Caltech101"
+    )
 
 
 def caltech256():
-    return collect_download_configs(lambda: datasets.Caltech256(ROOT, download=True), name="Caltech256")
+    return collect_download_configs(
+        lambda: datasets.Caltech256(ROOT, download=True), name="Caltech256"
+    )
 
 
 def cifar10():
-    return collect_download_configs(lambda: datasets.CIFAR10(ROOT, download=True), name="CIFAR10")
+    return collect_download_configs(
+        lambda: datasets.CIFAR10(ROOT, download=True), name="CIFAR10"
+    )
 
 
 def cifar100():
-    return collect_download_configs(lambda: datasets.CIFAR100(ROOT, download=True), name="CIFAR100")
+    return collect_download_configs(
+        lambda: datasets.CIFAR100(ROOT, download=True), name="CIFAR100"
+    )
 
 
 def voc():
@@ -262,21 +282,31 @@ def voc():
 
 
 def mnist():
-    with unittest.mock.patch.object(datasets.MNIST, "mirrors", datasets.MNIST.mirrors[-1:]):
-        return collect_download_configs(lambda: datasets.MNIST(ROOT, download=True), name="MNIST")
+    with unittest.mock.patch.object(
+        datasets.MNIST, "mirrors", datasets.MNIST.mirrors[-1:]
+    ):
+        return collect_download_configs(
+            lambda: datasets.MNIST(ROOT, download=True), name="MNIST"
+        )
 
 
 def fashion_mnist():
-    return collect_download_configs(lambda: datasets.FashionMNIST(ROOT, download=True), name="FashionMNIST")
+    return collect_download_configs(
+        lambda: datasets.FashionMNIST(ROOT, download=True), name="FashionMNIST"
+    )
 
 
 def kmnist():
-    return collect_download_configs(lambda: datasets.KMNIST(ROOT, download=True), name="KMNIST")
+    return collect_download_configs(
+        lambda: datasets.KMNIST(ROOT, download=True), name="KMNIST"
+    )
 
 
 def emnist():
     # the 'split' argument can be any valid one, since everything is downloaded anyway
-    return collect_download_configs(lambda: datasets.EMNIST(ROOT, split="byclass", download=True), name="EMNIST")
+    return collect_download_configs(
+        lambda: datasets.EMNIST(ROOT, split="byclass", download=True), name="EMNIST"
+    )
 
 
 def qmnist():
@@ -314,39 +344,36 @@ def phototour():
             )
             # The names postfixed with '_harris' point to the domain 'matthewalunbrown.com'. For some reason all
             # requests timeout from within CI. They are disabled until this is resolved.
-            for name in ("notredame", "yosemite", "liberty")  # "notredame_harris", "yosemite_harris", "liberty_harris"
+            for name in (
+                "notredame",
+                "yosemite",
+                "liberty",
+            )  # "notredame_harris", "yosemite_harris", "liberty_harris"
         ]
     )
 
 
 def sbdataset():
     return collect_download_configs(
-        lambda: datasets.SBDataset(ROOT, download=True),
-        name="SBDataset",
-        file="voc",
+        lambda: datasets.SBDataset(ROOT, download=True), name="SBDataset", file="voc",
     )
 
 
 def sbu():
     return collect_download_configs(
-        lambda: datasets.SBU(ROOT, download=True),
-        name="SBU",
-        file="sbu",
+        lambda: datasets.SBU(ROOT, download=True), name="SBU", file="sbu",
     )
 
 
 def semeion():
     return collect_download_configs(
-        lambda: datasets.SEMEION(ROOT, download=True),
-        name="SEMEION",
-        file="semeion",
+        lambda: datasets.SEMEION(ROOT, download=True), name="SEMEION", file="semeion",
     )
 
 
 def stl10():
     return collect_download_configs(
-        lambda: datasets.STL10(ROOT, download=True),
-        name="STL10",
+        lambda: datasets.STL10(ROOT, download=True), name="STL10",
     )
 
 
@@ -378,9 +405,7 @@ def usps():
 
 def celeba():
     return collect_download_configs(
-        lambda: datasets.CelebA(ROOT, download=True),
-        name="CelebA",
-        file="celeba",
+        lambda: datasets.CelebA(ROOT, download=True), name="CelebA", file="celeba",
     )
 
 
@@ -406,7 +431,9 @@ def kinetics():
                 name=f"Kinetics, {num_classes}, {split}",
                 file="kinetics",
             )
-            for num_classes, split in itertools.product(("400", "600", "700"), ("train", "val"))
+            for num_classes, split in itertools.product(
+                ("400", "600", "700"), ("train", "val")
+            )
         ]
     )
 

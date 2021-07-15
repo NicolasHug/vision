@@ -1,4 +1,3 @@
-
 import math
 import os
 import warnings
@@ -12,7 +11,7 @@ from .._internally_replaced_utils import _get_extension_path
 
 
 try:
-    lib_path = _get_extension_path('video_reader')
+    lib_path = _get_extension_path("video_reader")
     torch.ops.load_library(lib_path)
     _HAS_VIDEO_OPT = True
 except (ImportError, OSError):
@@ -78,8 +77,7 @@ def _validate_pts(pts_range):
             pts_range[0] <= pts_range[1]
         ), """Start pts should not be smaller than end pts, got
             start pts: {0:d} and end pts: {1:d}""".format(
-            pts_range[0],
-            pts_range[1],
+            pts_range[0], pts_range[1],
         )
 
 
@@ -216,10 +214,18 @@ def _read_video_from_file(
         audio_timebase.numerator,
         audio_timebase.denominator,
     )
-    vframes, _vframe_pts, vtimebase, vfps, vduration, \
-        aframes, aframe_pts, atimebase, asample_rate, aduration = (
-            result
-        )
+    (
+        vframes,
+        _vframe_pts,
+        vtimebase,
+        vfps,
+        vduration,
+        aframes,
+        aframe_pts,
+        atimebase,
+        asample_rate,
+        aduration,
+    ) = result
     info = _fill_info(vtimebase, vfps, vduration, atimebase, asample_rate, aduration)
     if aframes.numel() > 0:
         # when audio stream is found
@@ -254,8 +260,18 @@ def _read_video_timestamps_from_file(filename):
         0,  # audio_timebase_num
         1,  # audio_timebase_den
     )
-    _vframes, vframe_pts, vtimebase, vfps, vduration, \
-        _aframes, aframe_pts, atimebase, asample_rate, aduration = result
+    (
+        _vframes,
+        vframe_pts,
+        vtimebase,
+        vfps,
+        vduration,
+        _aframes,
+        aframe_pts,
+        atimebase,
+        asample_rate,
+        aduration,
+    ) = result
     info = _fill_info(vtimebase, vfps, vduration, atimebase, asample_rate, aduration)
 
     vframe_pts = vframe_pts.numpy().tolist()
@@ -372,10 +388,18 @@ def _read_video_from_memory(
         audio_timebase_denominator,
     )
 
-    vframes, _vframe_pts, vtimebase, vfps, vduration, \
-        aframes, aframe_pts, atimebase, asample_rate, aduration = (
-            result
-        )
+    (
+        vframes,
+        _vframe_pts,
+        vtimebase,
+        vfps,
+        vduration,
+        aframes,
+        aframe_pts,
+        atimebase,
+        asample_rate,
+        aduration,
+    ) = result
 
     if aframes.numel() > 0:
         # when audio stream is found
@@ -413,10 +437,18 @@ def _read_video_timestamps_from_memory(video_data):
         0,  # audio_timebase_num
         1,  # audio_timebase_den
     )
-    _vframes, vframe_pts, vtimebase, vfps, vduration, \
-        _aframes, aframe_pts, atimebase, asample_rate, aduration = (
-            result
-        )
+    (
+        _vframes,
+        vframe_pts,
+        vtimebase,
+        vfps,
+        vduration,
+        _aframes,
+        aframe_pts,
+        atimebase,
+        asample_rate,
+        aduration,
+    ) = result
     info = _fill_info(vtimebase, vfps, vduration, atimebase, asample_rate, aduration)
 
     vframe_pts = vframe_pts.numpy().tolist()
@@ -439,10 +471,10 @@ def _probe_video_from_memory(video_data):
 
 
 def _convert_to_sec(start_pts, end_pts, pts_unit, time_base):
-    if pts_unit == 'pts':
+    if pts_unit == "pts":
         start_pts = float(start_pts * time_base)
         end_pts = float(end_pts * time_base)
-        pts_unit = 'sec'
+        pts_unit = "sec"
     return start_pts, end_pts, pts_unit
 
 
@@ -480,7 +512,8 @@ def _read_video(filename, start_pts=0, end_pts=None, pts_unit="pts"):
 
     # video_timebase is the default time_base
     start_pts_sec, end_pts_sec, pts_unit = _convert_to_sec(
-        start_pts, end_pts, pts_unit, time_base)
+        start_pts, end_pts, pts_unit, time_base
+    )
 
     def get_pts(time_base):
         start_offset = start_pts_sec

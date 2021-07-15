@@ -274,10 +274,18 @@ class TestVideoReader(unittest.TestCase):
     def check_separate_decoding_result(self, tv_result, config):
         """check the decoding results from TorchVision decoder
         """
-        vframes, vframe_pts, vtimebase, vfps, vduration, \
-            aframes, aframe_pts, atimebase, asample_rate, aduration = (
-                tv_result
-            )
+        (
+            vframes,
+            vframe_pts,
+            vtimebase,
+            vfps,
+            vduration,
+            aframes,
+            aframe_pts,
+            atimebase,
+            asample_rate,
+            aduration,
+        ) = tv_result
 
         video_duration = vduration.item() * Fraction(
             vtimebase[0].item(), vtimebase[1].item()
@@ -331,10 +339,18 @@ class TestVideoReader(unittest.TestCase):
                         decoder or TorchVision decoder with getPtsOnly = 1
             config: config of decoding results checker
         """
-        vframes, vframe_pts, vtimebase, _vfps, _vduration, \
-            aframes, aframe_pts, atimebase, _asample_rate, _aduration = (
-                tv_result
-            )
+        (
+            vframes,
+            vframe_pts,
+            vtimebase,
+            _vfps,
+            _vduration,
+            aframes,
+            aframe_pts,
+            atimebase,
+            _asample_rate,
+            _aduration,
+        ) = tv_result
         if isinstance(ref_result, list):
             # the ref_result is from new video_reader decoder
             ref_result = DecoderResult(
@@ -508,10 +524,18 @@ class TestVideoReader(unittest.TestCase):
                     audio_timebase_den,
                 )
 
-                vframes, vframe_pts, vtimebase, vfps, vduration, \
-                    aframes, aframe_pts, atimebase, asample_rate, aduration = (
-                        tv_result
-                    )
+                (
+                    vframes,
+                    vframe_pts,
+                    vtimebase,
+                    vfps,
+                    vduration,
+                    aframes,
+                    aframe_pts,
+                    atimebase,
+                    asample_rate,
+                    aduration,
+                ) = tv_result
 
                 self.assertEqual(vframes.numel() > 0, readVideoStream)
                 self.assertEqual(vframe_pts.numel() > 0, readVideoStream)
@@ -817,10 +841,18 @@ class TestVideoReader(unittest.TestCase):
                     audio_timebase_num,
                     audio_timebase_den,
                 )
-                vframes, vframe_pts, vtimebase, vfps, vduration, \
-                    aframes, aframe_pts, atimebase, asample_rate, aduration = (
-                        tv_result
-                    )
+                (
+                    vframes,
+                    vframe_pts,
+                    vtimebase,
+                    vfps,
+                    vduration,
+                    aframes,
+                    aframe_pts,
+                    atimebase,
+                    asample_rate,
+                    aduration,
+                ) = tv_result
                 if aframes.numel() > 0:
                     self.assertEqual(samples, asample_rate.item())
                     self.assertEqual(1, aframes.size(1))
@@ -1057,10 +1089,18 @@ class TestVideoReader(unittest.TestCase):
                 audio_timebase_num,
                 audio_timebase_den,
             )
-            vframes, vframe_pts, vtimebase, vfps, vduration, \
-                aframes, aframe_pts, atimebase, asample_rate, aduration = (
-                    tv_result
-                )
+            (
+                vframes,
+                vframe_pts,
+                vtimebase,
+                vfps,
+                vduration,
+                aframes,
+                aframe_pts,
+                atimebase,
+                asample_rate,
+                aduration,
+            ) = tv_result
             self.assertAlmostEqual(config.video_fps, vfps.item(), delta=0.01)
 
             for num_frames in [4, 8, 16, 32, 64, 128]:
@@ -1236,17 +1276,17 @@ class TestVideoReader(unittest.TestCase):
             # FUTURE: check value of video / audio frames
 
     def test_invalid_file(self):
-        set_video_backend('video_reader')
+        set_video_backend("video_reader")
         with self.assertRaises(RuntimeError):
-            io.read_video('foo.mp4')
+            io.read_video("foo.mp4")
 
-        set_video_backend('pyav')
+        set_video_backend("pyav")
         with self.assertRaises(RuntimeError):
-            io.read_video('foo.mp4')
+            io.read_video("foo.mp4")
 
     def test_audio_present(self):
         """Test if audio frames are returned with video_reader backend."""
-        set_video_backend('video_reader')
+        set_video_backend("video_reader")
         for test_video, _ in test_videos.items():
             full_path = os.path.join(VIDEO_DIR, test_video)
             container = av.open(full_path)

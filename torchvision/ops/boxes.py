@@ -1,7 +1,12 @@
 import torch
 from torch import Tensor
 from typing import Tuple
-from ._box_convert import _box_cxcywh_to_xyxy, _box_xyxy_to_cxcywh, _box_xywh_to_xyxy, _box_xyxy_to_xywh
+from ._box_convert import (
+    _box_cxcywh_to_xyxy,
+    _box_xyxy_to_cxcywh,
+    _box_xywh_to_xyxy,
+    _box_xyxy_to_xywh,
+)
 import torchvision
 from torchvision.extension import _assert_has_ops
 
@@ -36,10 +41,7 @@ def nms(boxes: Tensor, scores: Tensor, iou_threshold: float) -> Tensor:
 
 
 def batched_nms(
-    boxes: Tensor,
-    scores: Tensor,
-    idxs: Tensor,
-    iou_threshold: float,
+    boxes: Tensor, scores: Tensor, idxs: Tensor, iou_threshold: float,
 ) -> Tensor:
     """
     Performs non-maximum suppression in a batched fashion.
@@ -70,10 +72,7 @@ def batched_nms(
 
 @torch.jit._script_if_tracing
 def _batched_nms_coordinate_trick(
-    boxes: Tensor,
-    scores: Tensor,
-    idxs: Tensor,
-    iou_threshold: float,
+    boxes: Tensor, scores: Tensor, idxs: Tensor, iou_threshold: float,
 ) -> Tensor:
     # strategy: in order to perform NMS independently per class,
     # we add an offset to all the boxes. The offset is dependent
@@ -90,16 +89,15 @@ def _batched_nms_coordinate_trick(
 
 @torch.jit._script_if_tracing
 def _batched_nms_vanilla(
-    boxes: Tensor,
-    scores: Tensor,
-    idxs: Tensor,
-    iou_threshold: float,
+    boxes: Tensor, scores: Tensor, idxs: Tensor, iou_threshold: float,
 ) -> Tensor:
     # Based on Detectron2 implementation, just manually call nms() on each class independently
     keep_mask = torch.zeros_like(scores, dtype=torch.bool)
     for class_id in torch.unique(idxs):
         curr_indices = torch.where(idxs == class_id)[0]
-        curr_keep_indices = nms(boxes[curr_indices], scores[curr_indices], iou_threshold)
+        curr_keep_indices = nms(
+            boxes[curr_indices], scores[curr_indices], iou_threshold
+        )
         keep_mask[curr_indices[curr_keep_indices]] = True
     keep_indices = torch.where(keep_mask)[0]
     return keep_indices[scores[keep_indices].sort(descending=True)[1]]
@@ -142,10 +140,18 @@ def clip_boxes_to_image(boxes: Tensor, size: Tuple[int, int]) -> Tensor:
     height, width = size
 
     if torchvision._is_tracing():
-        boxes_x = torch.max(boxes_x, torch.tensor(0, dtype=boxes.dtype, device=boxes.device))
-        boxes_x = torch.min(boxes_x, torch.tensor(width, dtype=boxes.dtype, device=boxes.device))
-        boxes_y = torch.max(boxes_y, torch.tensor(0, dtype=boxes.dtype, device=boxes.device))
-        boxes_y = torch.min(boxes_y, torch.tensor(height, dtype=boxes.dtype, device=boxes.device))
+        boxes_x = torch.max(
+            boxes_x, torch.tensor(0, dtype=boxes.dtype, device=boxes.device)
+        )
+        boxes_x = torch.min(
+            boxes_x, torch.tensor(width, dtype=boxes.dtype, device=boxes.device)
+        )
+        boxes_y = torch.max(
+            boxes_y, torch.tensor(0, dtype=boxes.dtype, device=boxes.device)
+        )
+        boxes_y = torch.min(
+            boxes_y, torch.tensor(height, dtype=boxes.dtype, device=boxes.device)
+        )
     else:
         boxes_x = boxes_x.clamp(min=0, max=width)
         boxes_y = boxes_y.clamp(min=0, max=height)
@@ -178,18 +184,20 @@ def box_convert(boxes: Tensor, in_fmt: str, out_fmt: str) -> Tensor:
 
     allowed_fmts = ("xyxy", "xywh", "cxcywh")
     if in_fmt not in allowed_fmts or out_fmt not in allowed_fmts:
-        raise ValueError("Unsupported Bounding Box Conversions for given in_fmt and out_fmt")
+        raise ValueError(
+            "Unsupported Bounding Box Conversions for given in_fmt and out_fmt"
+        )
 
     if in_fmt == out_fmt:
         return boxes.clone()
 
-    if in_fmt != 'xyxy' and out_fmt != 'xyxy':
+    if in_fmt != "xyxy" and out_fmt != "xyxy":
         # convert to xyxy and change in_fmt xyxy
         if in_fmt == "xywh":
             boxes = _box_xywh_to_xyxy(boxes)
         elif in_fmt == "cxcywh":
             boxes = _box_cxcywh_to_xyxy(boxes)
-        in_fmt = 'xyxy'
+        in_fmt = "xyxy"
 
     if in_fmt == "xyxy":
         if out_fmt == "xywh":

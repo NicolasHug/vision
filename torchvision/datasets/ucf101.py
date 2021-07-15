@@ -42,20 +42,35 @@ class UCF101(VisionDataset):
             - label (int): class of the video clip
     """
 
-    def __init__(self, root, annotation_path, frames_per_clip, step_between_clips=1,
-                 frame_rate=None, fold=1, train=True, transform=None,
-                 _precomputed_metadata=None, num_workers=1, _video_width=0,
-                 _video_height=0, _video_min_dimension=0, _audio_samples=0):
+    def __init__(
+        self,
+        root,
+        annotation_path,
+        frames_per_clip,
+        step_between_clips=1,
+        frame_rate=None,
+        fold=1,
+        train=True,
+        transform=None,
+        _precomputed_metadata=None,
+        num_workers=1,
+        _video_width=0,
+        _video_height=0,
+        _video_min_dimension=0,
+        _audio_samples=0,
+    ):
         super(UCF101, self).__init__(root)
         if not 1 <= fold <= 3:
             raise ValueError("fold should be between 1 and 3, got {}".format(fold))
 
-        extensions = ('avi',)
+        extensions = ("avi",)
         self.fold = fold
         self.train = train
 
         self.classes, class_to_idx = find_classes(self.root)
-        self.samples = make_dataset(self.root, class_to_idx, extensions, is_valid_file=None)
+        self.samples = make_dataset(
+            self.root, class_to_idx, extensions, is_valid_file=None
+        )
         video_list = [x[0] for x in self.samples]
         video_clips = VideoClips(
             video_list,

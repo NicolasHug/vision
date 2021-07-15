@@ -46,7 +46,7 @@ class TestDatasetsSamplers:
             sampler = RandomClipSampler(video_clips, 3)
             assert len(sampler) == 3 * 3
             indices = torch.tensor(list(iter(sampler)))
-            videos = torch.div(indices, 5, rounding_mode='floor')
+            videos = torch.div(indices, 5, rounding_mode="floor")
             v_idxs, count = torch.unique(videos, return_counts=True)
             assert_equal(v_idxs, torch.tensor([0, 1, 2]))
             assert_equal(count, torch.tensor([3, 3, 3]))
@@ -63,7 +63,7 @@ class TestDatasetsSamplers:
             indices.remove(0)
             indices.remove(1)
             indices = torch.tensor(indices) - 2
-            videos = torch.div(indices, 5, rounding_mode='floor')
+            videos = torch.div(indices, 5, rounding_mode="floor")
             v_idxs, count = torch.unique(videos, return_counts=True)
             assert_equal(v_idxs, torch.tensor([0, 1]))
             assert_equal(count, torch.tensor([3, 3]))
@@ -74,7 +74,7 @@ class TestDatasetsSamplers:
             sampler = UniformClipSampler(video_clips, 3)
             assert len(sampler) == 3 * 3
             indices = torch.tensor(list(iter(sampler)))
-            videos = torch.div(indices, 5, rounding_mode='floor')
+            videos = torch.div(indices, 5, rounding_mode="floor")
             v_idxs, count = torch.unique(videos, return_counts=True)
             assert_equal(v_idxs, torch.tensor([0, 1, 2]))
             assert_equal(count, torch.tensor([3, 3, 3]))
@@ -94,25 +94,19 @@ class TestDatasetsSamplers:
             clip_sampler = UniformClipSampler(video_clips, 3)
 
             distributed_sampler_rank0 = DistributedSampler(
-                clip_sampler,
-                num_replicas=2,
-                rank=0,
-                group_size=3,
+                clip_sampler, num_replicas=2, rank=0, group_size=3,
             )
             indices = torch.tensor(list(iter(distributed_sampler_rank0)))
             assert len(distributed_sampler_rank0) == 6
             assert_equal(indices, torch.tensor([0, 2, 4, 10, 12, 14]))
 
             distributed_sampler_rank1 = DistributedSampler(
-                clip_sampler,
-                num_replicas=2,
-                rank=1,
-                group_size=3,
+                clip_sampler, num_replicas=2, rank=1, group_size=3,
             )
             indices = torch.tensor(list(iter(distributed_sampler_rank1)))
             assert len(distributed_sampler_rank1) == 6
             assert_equal(indices, torch.tensor([5, 7, 9, 0, 2, 4]))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pytest.main([__file__])

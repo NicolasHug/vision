@@ -16,8 +16,8 @@ import torch
 import torchvision.transforms as T
 
 
-plt.rcParams["savefig.bbox"] = 'tight'
-orig_img = Image.open(Path('assets') / 'astronaut.jpg')
+plt.rcParams["savefig.bbox"] = "tight"
+orig_img = Image.open(Path("assets") / "astronaut.jpg")
 # if you change the seed, make sure that the randomly-applied transforms
 # properly show that the image can be both transformed and *not* transformed!
 torch.manual_seed(0)
@@ -39,7 +39,7 @@ def plot(imgs, with_orig=True, row_title=None, **imshow_kwargs):
             ax.set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
 
     if with_orig:
-        axs[0, 0].set(title='Original image')
+        axs[0, 0].set(title="Original image")
         axs[0, 0].title.set_size(8)
     if row_title is not None:
         for row_idx in range(num_rows):
@@ -72,7 +72,9 @@ plot(resized_imgs)
 # The :class:`~torchvision.transforms.CenterCrop` transform
 # (see also :func:`~torchvision.transforms.functional.center_crop`)
 # crops the given image at the center.
-center_crops = [T.CenterCrop(size=size)(orig_img) for size in (30, 50, 100, orig_img.size)]
+center_crops = [
+    T.CenterCrop(size=size)(orig_img) for size in (30, 50, 100, orig_img.size)
+]
 plot(center_crops)
 
 ####################################
@@ -81,7 +83,9 @@ plot(center_crops)
 # The :class:`~torchvision.transforms.FiveCrop` transform
 # (see also :func:`~torchvision.transforms.functional.five_crop`)
 # crops the given image into four corners and the central crop.
-(top_left, top_right, bottom_left, bottom_right, center) = T.FiveCrop(size=(100, 100))(orig_img)
+(top_left, top_right, bottom_left, bottom_right, center) = T.FiveCrop(size=(100, 100))(
+    orig_img
+)
 plot([top_left, top_right, bottom_left, bottom_right, center])
 
 ####################################
@@ -91,7 +95,7 @@ plot([top_left, top_right, bottom_left, bottom_right, center])
 # (see also :func:`~torchvision.transforms.functional.to_grayscale`)
 # converts an image to grayscale
 gray_img = T.Grayscale()(orig_img)
-plot([gray_img], cmap='gray')
+plot([gray_img], cmap="gray")
 
 ####################################
 # Random transforms
@@ -103,7 +107,7 @@ plot([gray_img], cmap='gray')
 # ~~~~~~~~~~~
 # The :class:`~torchvision.transforms.ColorJitter` transform
 # randomly changes the brightness, saturation, and other properties of an image.
-jitter = T.ColorJitter(brightness=.5, hue=.3)
+jitter = T.ColorJitter(brightness=0.5, hue=0.3)
 jitted_imgs = [jitter(orig_img) for _ in range(4)]
 plot(jitted_imgs)
 
@@ -143,7 +147,9 @@ plot(rotated_imgs)
 # The :class:`~torchvision.transforms.RandomAffine` transform
 # (see also :func:`~torchvision.transforms.functional.affine`)
 # performs random affine transform on an image.
-affine_transfomer = T.RandomAffine(degrees=(30, 70), translate=(0.1, 0.3), scale=(0.5, 0.75))
+affine_transfomer = T.RandomAffine(
+    degrees=(30, 70), translate=(0.1, 0.3), scale=(0.5, 0.75)
+)
 affine_imgs = [affine_transfomer(orig_img) for _ in range(4)]
 plot(affine_imgs)
 
@@ -236,13 +242,14 @@ plot(equalized_imgs)
 # The :class:`~torchvision.transforms.AutoAugment` transform
 # automatically augments data based on a given auto-augmentation policy.
 # See :class:`~torchvision.transforms.AutoAugmentPolicy` for the available policies.
-policies = [T.AutoAugmentPolicy.CIFAR10, T.AutoAugmentPolicy.IMAGENET, T.AutoAugmentPolicy.SVHN]
-augmenters = [T.AutoAugment(policy) for policy in policies]
-imgs = [
-    [augmenter(orig_img) for _ in range(4)]
-    for augmenter in augmenters
+policies = [
+    T.AutoAugmentPolicy.CIFAR10,
+    T.AutoAugmentPolicy.IMAGENET,
+    T.AutoAugmentPolicy.SVHN,
 ]
-row_title = [str(policy).split('.')[-1] for policy in policies]
+augmenters = [T.AutoAugment(policy) for policy in policies]
+imgs = [[augmenter(orig_img) for _ in range(4)] for augmenter in augmenters]
+row_title = [str(policy).split(".")[-1] for policy in policies]
 plot(imgs, row_title=row_title)
 
 ####################################

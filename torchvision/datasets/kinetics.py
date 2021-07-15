@@ -9,7 +9,12 @@ from typing import Any, Callable, Dict, Optional, Tuple
 from functools import partial
 from multiprocessing import Pool
 
-from .utils import download_and_extract_archive, download_url, verify_str_arg, check_integrity
+from .utils import (
+    download_and_extract_archive,
+    download_url,
+    verify_str_arg,
+    check_integrity,
+)
 from .folder import find_classes, make_dataset
 from .video_utils import VideoClips
 from .vision import VisionDataset
@@ -107,7 +112,9 @@ class Kinetics(VisionDataset):
     ) -> None:
 
         # TODO: support test
-        self.num_classes = verify_str_arg(num_classes, arg="num_classes", valid_values=["400", "600", "700"])
+        self.num_classes = verify_str_arg(
+            num_classes, arg="num_classes", valid_values=["400", "600", "700"]
+        )
         self.extensions = extensions
         self.num_download_workers = num_download_workers
 
@@ -120,7 +127,9 @@ class Kinetics(VisionDataset):
             assert not download, "Cannot download the videos using legacy_structure."
         else:
             self.split_folder = path.join(root, split)
-            self.split = verify_str_arg(split, arg="split", valid_values=["train", "val"])
+            self.split = verify_str_arg(
+                split, arg="split", valid_values=["train", "val"]
+            )
 
         if download:
             self.download_and_process_videos()
@@ -128,7 +137,9 @@ class Kinetics(VisionDataset):
         super().__init__(self.root)
 
         self.classes, class_to_idx = find_classes(self.split_folder)
-        self.samples = make_dataset(self.split_folder, class_to_idx, extensions, is_valid_file=None)
+        self.samples = make_dataset(
+            self.split_folder, class_to_idx, extensions, is_valid_file=None
+        )
         video_list = [x[0] for x in self.samples]
         self.video_clips = VideoClips(
             video_list,
@@ -183,7 +194,9 @@ class Kinetics(VisionDataset):
                 download_and_extract_archive(line, tar_path, self.split_folder)
         else:
             part = partial(_dl_wrap, tar_path, self.split_folder)
-            lines = [str(line).replace("\n", "") for line in list_video_urls.readlines()]
+            lines = [
+                str(line).replace("\n", "") for line in list_video_urls.readlines()
+            ]
             poolproc = Pool(self.num_download_workers)
             poolproc.map(part, lines)
 
@@ -201,7 +214,10 @@ class Kinetics(VisionDataset):
         """
         annotation_path = path.join(self.root, "annotations")
         if not check_integrity(path.join(annotation_path, f"{self.split}.csv")):
-            download_url(self._ANNOTATION_URLS[self.num_classes].format(split=self.split), annotation_path)
+            download_url(
+                self._ANNOTATION_URLS[self.num_classes].format(split=self.split),
+                annotation_path,
+            )
         annotations = path.join(annotation_path, f"{self.split}.csv")
 
         file_fmtstr = "{ytid}_{start:06}_{end:06}.mp4"
@@ -302,20 +318,21 @@ class Kinetics400(Kinetics):
         split: Any = None,
         download: Any = None,
         num_download_workers: Any = None,
-        **kwargs: Any
+        **kwargs: Any,
     ):
         warnings.warn(
             "Kinetics400 is deprecated and will be removed in a future release."
-            "It was replaced by Kinetics(..., num_classes=\"400\").")
-        if any(value is not None for value in (num_classes, split, download, num_download_workers)):
+            'It was replaced by Kinetics(..., num_classes="400").'
+        )
+        if any(
+            value is not None
+            for value in (num_classes, split, download, num_download_workers)
+        ):
             raise RuntimeError(
                 "Usage of 'num_classes', 'split', 'download', or 'num_download_workers' is not supported in "
                 "Kinetics400. Please use Kinetics instead."
             )
 
         super(Kinetics400, self).__init__(
-            root=root,
-            frames_per_clip=frames_per_clip,
-            _legacy=True,
-            **kwargs,
+            root=root, frames_per_clip=frames_per_clip, _legacy=True, **kwargs,
         )

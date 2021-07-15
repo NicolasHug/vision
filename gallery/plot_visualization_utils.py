@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import torchvision.transforms.functional as F
 
 
-plt.rcParams["savefig.bbox"] = 'tight'
+plt.rcParams["savefig.bbox"] = "tight"
 
 
 def show(imgs):
@@ -40,8 +40,8 @@ from torchvision.utils import make_grid
 from torchvision.io import read_image
 from pathlib import Path
 
-dog1_int = read_image(str(Path('assets') / 'dog1.jpg'))
-dog2_int = read_image(str(Path('assets') / 'dog2.jpg'))
+dog1_int = read_image(str(Path("assets") / "dog1.jpg"))
+dog2_int = read_image(str(Path("assets") / "dog2.jpg"))
 
 grid = make_grid([dog1_int, dog2_int, dog1_int, dog2_int])
 show(grid)
@@ -89,9 +89,11 @@ print(outputs)
 # Let's plot the boxes detected by our model. We will only plot the boxes with a
 # score greater than a given threshold.
 
-score_threshold = .8
+score_threshold = 0.8
 dogs_with_boxes = [
-    draw_bounding_boxes(dog_int, boxes=output['boxes'][output['scores'] > score_threshold], width=4)
+    draw_bounding_boxes(
+        dog_int, boxes=output["boxes"][output["scores"] > score_threshold], width=4
+    )
     for dog_int, output in zip(batch_int, outputs)
 ]
 show(dogs_with_boxes)
@@ -125,8 +127,10 @@ from torchvision.models.segmentation import fcn_resnet50
 model = fcn_resnet50(pretrained=True, progress=False)
 model = model.eval()
 
-normalized_batch = F.normalize(batch, mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
-output = model(normalized_batch)['out']
+normalized_batch = F.normalize(
+    batch, mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)
+)
+output = model(normalized_batch)["out"]
 print(output.shape, output.min().item(), output.max().item())
 
 #####################################
@@ -140,9 +144,27 @@ print(output.shape, output.min().item(), output.max().item())
 # boat class:
 
 sem_classes = [
-    '__background__', 'aeroplane', 'bicycle', 'bird', 'boat', 'bottle', 'bus',
-    'car', 'cat', 'chair', 'cow', 'diningtable', 'dog', 'horse', 'motorbike',
-    'person', 'pottedplant', 'sheep', 'sofa', 'train', 'tvmonitor'
+    "__background__",
+    "aeroplane",
+    "bicycle",
+    "bird",
+    "boat",
+    "bottle",
+    "bus",
+    "car",
+    "cat",
+    "chair",
+    "cow",
+    "diningtable",
+    "dog",
+    "horse",
+    "motorbike",
+    "person",
+    "pottedplant",
+    "sheep",
+    "sofa",
+    "train",
+    "tvmonitor",
 ]
 sem_class_to_idx = {cls: idx for (idx, cls) in enumerate(sem_classes)}
 
@@ -151,7 +173,7 @@ normalized_masks = torch.nn.functional.softmax(output, dim=1)
 dog_and_boat_masks = [
     normalized_masks[img_idx, sem_class_to_idx[cls]]
     for img_idx in range(batch.shape[0])
-    for cls in ('dog', 'boat')
+    for cls in ("dog", "boat")
 ]
 
 show(dog_and_boat_masks)
@@ -166,7 +188,7 @@ show(dog_and_boat_masks)
 # 1]``. To get boolean masks, we can do the following:
 
 class_dim = 1
-boolean_dog_masks = (normalized_masks.argmax(class_dim) == sem_class_to_idx['dog'])
+boolean_dog_masks = normalized_masks.argmax(class_dim) == sem_class_to_idx["dog"]
 print(f"shape = {boolean_dog_masks.shape}, dtype = {boolean_dog_masks.dtype}")
 show([m.float() for m in boolean_dog_masks])
 
@@ -205,12 +227,18 @@ show(dogs_with_masks)
 num_classes = normalized_masks.shape[1]
 dog1_masks = normalized_masks[0]
 class_dim = 0
-dog1_all_classes_masks = dog1_masks.argmax(class_dim) == torch.arange(num_classes)[:, None, None]
+dog1_all_classes_masks = (
+    dog1_masks.argmax(class_dim) == torch.arange(num_classes)[:, None, None]
+)
 
 print(f"dog1_masks shape = {dog1_masks.shape}, dtype = {dog1_masks.dtype}")
-print(f"dog1_all_classes_masks = {dog1_all_classes_masks.shape}, dtype = {dog1_all_classes_masks.dtype}")
+print(
+    f"dog1_all_classes_masks = {dog1_all_classes_masks.shape}, dtype = {dog1_all_classes_masks.dtype}"
+)
 
-dog_with_all_masks = draw_segmentation_masks(dog1_int, masks=dog1_all_classes_masks, alpha=.6)
+dog_with_all_masks = draw_segmentation_masks(
+    dog1_int, masks=dog1_all_classes_masks, alpha=0.6
+)
 show(dog_with_all_masks)
 
 #####################################
@@ -228,13 +256,15 @@ show(dog_with_all_masks)
 # but involves a bit more juggling with the dimensions.
 
 class_dim = 1
-all_classes_masks = normalized_masks.argmax(class_dim) == torch.arange(num_classes)[:, None, None, None]
+all_classes_masks = (
+    normalized_masks.argmax(class_dim) == torch.arange(num_classes)[:, None, None, None]
+)
 print(f"shape = {all_classes_masks.shape}, dtype = {all_classes_masks.dtype}")
 # The first dimension is the classes now, so we need to swap it
 all_classes_masks = all_classes_masks.swapaxes(0, 1)
 
 dogs_with_masks = [
-    draw_segmentation_masks(img, masks=mask, alpha=.6)
+    draw_segmentation_masks(img, masks=mask, alpha=0.6)
     for img, mask in zip(batch_int, all_classes_masks)
 ]
 show(dogs_with_masks)
@@ -262,6 +292,7 @@ show(dogs_with_masks)
 #     :func:`~torchvision.models.detection.fasterrcnn_resnet50_fpn`.
 
 from torchvision.models.detection import maskrcnn_resnet50_fpn
+
 model = maskrcnn_resnet50_fpn(pretrained=True, progress=False)
 model = model.eval()
 
@@ -287,9 +318,11 @@ print(output)
 # models.
 
 dog1_output = output[0]
-dog1_masks = dog1_output['masks']
-print(f"shape = {dog1_masks.shape}, dtype = {dog1_masks.dtype}, "
-      f"min = {dog1_masks.min()}, max = {dog1_masks.max()}")
+dog1_masks = dog1_output["masks"]
+print(
+    f"shape = {dog1_masks.shape}, dtype = {dog1_masks.dtype}, "
+    f"min = {dog1_masks.min()}, max = {dog1_masks.max()}"
+)
 
 #####################################
 # Here the masks corresponds to probabilities indicating, for each pixel, how
@@ -298,24 +331,103 @@ print(f"shape = {dog1_masks.shape}, dtype = {dog1_masks.dtype}, "
 # Let's see which labels were predicted for the instances of the first image.
 
 inst_classes = [
-    '__background__', 'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus',
-    'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'N/A', 'stop sign',
-    'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow',
-    'elephant', 'bear', 'zebra', 'giraffe', 'N/A', 'backpack', 'umbrella', 'N/A', 'N/A',
-    'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball',
-    'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket',
-    'bottle', 'N/A', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl',
-    'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza',
-    'donut', 'cake', 'chair', 'couch', 'potted plant', 'bed', 'N/A', 'dining table',
-    'N/A', 'N/A', 'toilet', 'N/A', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone',
-    'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'N/A', 'book',
-    'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
+    "__background__",
+    "person",
+    "bicycle",
+    "car",
+    "motorcycle",
+    "airplane",
+    "bus",
+    "train",
+    "truck",
+    "boat",
+    "traffic light",
+    "fire hydrant",
+    "N/A",
+    "stop sign",
+    "parking meter",
+    "bench",
+    "bird",
+    "cat",
+    "dog",
+    "horse",
+    "sheep",
+    "cow",
+    "elephant",
+    "bear",
+    "zebra",
+    "giraffe",
+    "N/A",
+    "backpack",
+    "umbrella",
+    "N/A",
+    "N/A",
+    "handbag",
+    "tie",
+    "suitcase",
+    "frisbee",
+    "skis",
+    "snowboard",
+    "sports ball",
+    "kite",
+    "baseball bat",
+    "baseball glove",
+    "skateboard",
+    "surfboard",
+    "tennis racket",
+    "bottle",
+    "N/A",
+    "wine glass",
+    "cup",
+    "fork",
+    "knife",
+    "spoon",
+    "bowl",
+    "banana",
+    "apple",
+    "sandwich",
+    "orange",
+    "broccoli",
+    "carrot",
+    "hot dog",
+    "pizza",
+    "donut",
+    "cake",
+    "chair",
+    "couch",
+    "potted plant",
+    "bed",
+    "N/A",
+    "dining table",
+    "N/A",
+    "N/A",
+    "toilet",
+    "N/A",
+    "tv",
+    "laptop",
+    "mouse",
+    "remote",
+    "keyboard",
+    "cell phone",
+    "microwave",
+    "oven",
+    "toaster",
+    "sink",
+    "refrigerator",
+    "N/A",
+    "book",
+    "clock",
+    "vase",
+    "scissors",
+    "teddy bear",
+    "hair drier",
+    "toothbrush",
 ]
 
 inst_class_to_idx = {cls: idx for (idx, cls) in enumerate(inst_classes)}
 
 print("For the first dog, the following instances were detected:")
-print([inst_classes[label] for label in dog1_output['labels']])
+print([inst_classes[label] for label in dog1_output["labels"]])
 
 #####################################
 # Interestingly, the model detects two persons in the image. Let's go ahead and
@@ -327,7 +439,7 @@ print([inst_classes[label] for label in dog1_output['labels']])
 # (one could also choose a different threshold).
 
 proba_threshold = 0.5
-dog1_bool_masks = dog1_output['masks'] > proba_threshold
+dog1_bool_masks = dog1_output["masks"] > proba_threshold
 print(f"shape = {dog1_bool_masks.shape}, dtype = {dog1_bool_masks.dtype}")
 
 # There's an extra dimension (1) to the masks. We need to remove it
@@ -340,7 +452,7 @@ show(draw_segmentation_masks(dog1_int, dog1_bool_masks, alpha=0.9))
 # with people. Looking more closely at the scores will help us plotting more
 # relevant masks:
 
-print(dog1_output['scores'])
+print(dog1_output["scores"])
 
 #####################################
 # Clearly the model is less confident about the dog detection than it is about
@@ -348,11 +460,10 @@ print(dog1_output['scores'])
 # for only those that have a good score. Let's use a score threshold of .75
 # here, and also plot the masks of the second dog.
 
-score_threshold = .75
+score_threshold = 0.75
 
 boolean_masks = [
-    out['masks'][out['scores'] > score_threshold] > proba_threshold
-    for out in output
+    out["masks"][out["scores"] > score_threshold] > proba_threshold for out in output
 ]
 
 dogs_with_masks = [

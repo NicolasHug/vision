@@ -22,32 +22,37 @@ class SEMEION(VisionDataset):
             downloaded again.
 
     """
-    url = "http://archive.ics.uci.edu/ml/machine-learning-databases/semeion/semeion.data"
+    url = (
+        "http://archive.ics.uci.edu/ml/machine-learning-databases/semeion/semeion.data"
+    )
     filename = "semeion.data"
-    md5_checksum = 'cb545d371d2ce14ec121470795a77432'
+    md5_checksum = "cb545d371d2ce14ec121470795a77432"
 
     def __init__(
-            self,
-            root: str,
-            transform: Optional[Callable] = None,
-            target_transform: Optional[Callable] = None,
-            download: bool = True,
+        self,
+        root: str,
+        transform: Optional[Callable] = None,
+        target_transform: Optional[Callable] = None,
+        download: bool = True,
     ) -> None:
-        super(SEMEION, self).__init__(root, transform=transform,
-                                      target_transform=target_transform)
+        super(SEMEION, self).__init__(
+            root, transform=transform, target_transform=target_transform
+        )
 
         if download:
             self.download()
 
         if not self._check_integrity():
-            raise RuntimeError('Dataset not found or corrupted.' +
-                               ' You can use download=True to download it')
+            raise RuntimeError(
+                "Dataset not found or corrupted."
+                + " You can use download=True to download it"
+            )
 
         fp = os.path.join(self.root, self.filename)
         data = np.loadtxt(fp)
         # convert value to 8 bit unsigned integer
         # color (white #255) the pixels
-        self.data = (data[:, :256] * 255).astype('uint8')
+        self.data = (data[:, :256] * 255).astype("uint8")
         self.data = np.reshape(self.data, (-1, 16, 16))
         self.labels = np.nonzero(data[:, 256:])[1]
 
@@ -63,7 +68,7 @@ class SEMEION(VisionDataset):
 
         # doing this so that it is consistent with all other datasets
         # to return a PIL Image
-        img = Image.fromarray(img, mode='L')
+        img = Image.fromarray(img, mode="L")
 
         if self.transform is not None:
             img = self.transform(img)
@@ -85,7 +90,7 @@ class SEMEION(VisionDataset):
 
     def download(self) -> None:
         if self._check_integrity():
-            print('Files already downloaded and verified')
+            print("Files already downloaded and verified")
             return
 
         root = self.root

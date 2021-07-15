@@ -42,13 +42,19 @@ REQUIRED_LABELS = {
 
 
 def query_torchvision(cmd: str, *, accept) -> Any:
-    response = requests.get(f"https://api.github.com/repos/pytorch/vision/{cmd}", headers=dict(Accept=accept))
+    response = requests.get(
+        f"https://api.github.com/repos/pytorch/vision/{cmd}",
+        headers=dict(Accept=accept),
+    )
     return response.json()
 
 
 def get_pr_number(commit_hash: str) -> Optional[int]:
     # See https://docs.github.com/en/rest/reference/repos#list-pull-requests-associated-with-a-commit
-    data = query_torchvision(f"commits/{commit_hash}/pulls", accept="application/vnd.github.groot-preview+json")
+    data = query_torchvision(
+        f"commits/{commit_hash}/pulls",
+        accept="application/vnd.github.groot-preview+json",
+    )
     if not data:
         return None
     return data[0]["number"]
@@ -56,7 +62,9 @@ def get_pr_number(commit_hash: str) -> Optional[int]:
 
 def get_pr_merger_and_labels(pr_number: int) -> Tuple[str, Set[str]]:
     # See https://docs.github.com/en/rest/reference/pulls#get-a-pull-request
-    data = query_torchvision(f"pulls/{pr_number}", accept="application/vnd.github.v3+json")
+    data = query_torchvision(
+        f"pulls/{pr_number}", accept="application/vnd.github.v3+json"
+    )
     merger = data["merged_by"]["login"]
     labels = {label["name"] for label in data["labels"]}
     return merger, labels

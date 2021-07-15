@@ -19,7 +19,9 @@ class Conv2d(torch.nn.Conv2d):
         super().__init__(*args, **kwargs)
         warnings.warn(
             "torchvision.ops.misc.Conv2d is deprecated and will be "
-            "removed in future versions, use torch.nn.Conv2d instead.", FutureWarning)
+            "removed in future versions, use torch.nn.Conv2d instead.",
+            FutureWarning,
+        )
 
 
 class ConvTranspose2d(torch.nn.ConvTranspose2d):
@@ -27,7 +29,9 @@ class ConvTranspose2d(torch.nn.ConvTranspose2d):
         super().__init__(*args, **kwargs)
         warnings.warn(
             "torchvision.ops.misc.ConvTranspose2d is deprecated and will be "
-            "removed in future versions, use torch.nn.ConvTranspose2d instead.", FutureWarning)
+            "removed in future versions, use torch.nn.ConvTranspose2d instead.",
+            FutureWarning,
+        )
 
 
 class BatchNorm2d(torch.nn.BatchNorm2d):
@@ -35,7 +39,9 @@ class BatchNorm2d(torch.nn.BatchNorm2d):
         super().__init__(*args, **kwargs)
         warnings.warn(
             "torchvision.ops.misc.BatchNorm2d is deprecated and will be "
-            "removed in future versions, use torch.nn.BatchNorm2d instead.", FutureWarning)
+            "removed in future versions, use torch.nn.BatchNorm2d instead.",
+            FutureWarning,
+        )
 
 
 interpolate = torch.nn.functional.interpolate
@@ -49,15 +55,14 @@ class FrozenBatchNorm2d(torch.nn.Module):
     """
 
     def __init__(
-        self,
-        num_features: int,
-        eps: float = 1e-5,
-        n: Optional[int] = None,
+        self, num_features: int, eps: float = 1e-5, n: Optional[int] = None,
     ):
         # n=None for backward-compatibility
         if n is not None:
-            warnings.warn("`n` argument is deprecated and has been renamed `num_features`",
-                          DeprecationWarning)
+            warnings.warn(
+                "`n` argument is deprecated and has been renamed `num_features`",
+                DeprecationWarning,
+            )
             num_features = n
         super(FrozenBatchNorm2d, self).__init__()
         self.eps = eps
@@ -76,13 +81,19 @@ class FrozenBatchNorm2d(torch.nn.Module):
         unexpected_keys: List[str],
         error_msgs: List[str],
     ):
-        num_batches_tracked_key = prefix + 'num_batches_tracked'
+        num_batches_tracked_key = prefix + "num_batches_tracked"
         if num_batches_tracked_key in state_dict:
             del state_dict[num_batches_tracked_key]
 
         super(FrozenBatchNorm2d, self)._load_from_state_dict(
-            state_dict, prefix, local_metadata, strict,
-            missing_keys, unexpected_keys, error_msgs)
+            state_dict,
+            prefix,
+            local_metadata,
+            strict,
+            missing_keys,
+            unexpected_keys,
+            error_msgs,
+        )
 
     def forward(self, x: Tensor) -> Tensor:
         # move reshapes to the beginning

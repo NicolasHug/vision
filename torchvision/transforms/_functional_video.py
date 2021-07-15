@@ -23,7 +23,7 @@ def crop(clip, i, j, h, w):
         clip (torch.tensor): Video clip to be cropped. Size is (C, T, H, W)
     """
     assert len(clip.size()) == 4, "clip should be a 4D tensor"
-    return clip[..., i:i + h, j:j + w]
+    return clip[..., i : i + h, j : j + w]
 
 
 def resize(clip, target_size, interpolation_mode):
@@ -74,7 +74,9 @@ def to_tensor(clip):
     """
     _is_tensor_video_clip(clip)
     if not clip.dtype == torch.uint8:
-        raise TypeError("clip tensor should have data type uint8. Got %s" % str(clip.dtype))
+        raise TypeError(
+            "clip tensor should have data type uint8. Got %s" % str(clip.dtype)
+        )
     return clip.float().permute(3, 0, 1, 2) / 255.0
 
 

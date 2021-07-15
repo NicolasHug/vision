@@ -27,10 +27,13 @@ def convert_boxes_to_roi_format(boxes: List[Tensor]) -> Tensor:
 def check_roi_boxes_shape(boxes: Tensor):
     if isinstance(boxes, (list, tuple)):
         for _tensor in boxes:
-            assert _tensor.size(1) == 4, \
-                'The shape of the tensor in the boxes list is not correct as List[Tensor[L, 4]]'
+            assert (
+                _tensor.size(1) == 4
+            ), "The shape of the tensor in the boxes list is not correct as List[Tensor[L, 4]]"
     elif isinstance(boxes, torch.Tensor):
-        assert boxes.size(1) == 5, 'The boxes tensor shape is not correct as Tensor[K, 5]'
+        assert (
+            boxes.size(1) == 5
+        ), "The boxes tensor shape is not correct as Tensor[K, 5]"
     else:
-        assert False, 'boxes is expected to be a Tensor[L, 5] or a List[Tensor[K, 4]]'
+        assert False, "boxes is expected to be a Tensor[L, 5] or a List[Tensor[K, 4]]"
     return

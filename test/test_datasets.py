@@ -24,7 +24,8 @@ from torchvision import datasets
 class STL10TestCase(datasets_utils.ImageDatasetTestCase):
     DATASET_CLASS = datasets.STL10
     ADDITIONAL_CONFIGS = datasets_utils.combinations_grid(
-        split=("train", "test", "unlabeled", "train+unlabeled"))
+        split=("train", "test", "unlabeled", "train+unlabeled")
+    )
 
     @staticmethod
     def _make_binary_file(num_elements, root, name):
@@ -33,7 +34,9 @@ class STL10TestCase(datasets_utils.ImageDatasetTestCase):
 
     @staticmethod
     def _make_image_file(num_images, root, name, num_channels=3, height=96, width=96):
-        STL10TestCase._make_binary_file(num_images * num_channels * height * width, root, name)
+        STL10TestCase._make_binary_file(
+            num_images * num_channels * height * width, root, name
+        )
 
     @staticmethod
     def _make_label_file(num_images, root, name):
@@ -120,7 +123,11 @@ class Caltech101TestCase(datasets_utils.ImageDatasetTestCase):
         images = root / "101_ObjectCategories"
         annotations = root / "Annotations"
 
-        categories = (("Faces", "Faces_2"), ("helicopter", "helicopter"), ("ying_yang", "ying_yang"))
+        categories = (
+            ("Faces", "Faces_2"),
+            ("helicopter", "helicopter"),
+            ("ying_yang", "ying_yang"),
+        )
         num_images_per_category = 2
 
         for image_category, annotation_category in categories:
@@ -150,8 +157,14 @@ class Caltech101TestCase(datasets_utils.ImageDatasetTestCase):
             self._create_annotation_file(root, file_name_fn(idx))
 
     def _create_annotation_file(self, root, name):
-        mdict = dict(obj_contour=torch.rand((2, torch.randint(3, 6, size=())), dtype=torch.float64).numpy())
-        datasets_utils.lazy_importer.scipy.io.savemat(str(pathlib.Path(root) / name), mdict)
+        mdict = dict(
+            obj_contour=torch.rand(
+                (2, torch.randint(3, 6, size=())), dtype=torch.float64
+            ).numpy()
+        )
+        datasets_utils.lazy_importer.scipy.io.savemat(
+            str(pathlib.Path(root) / name), mdict
+        )
 
     def test_combined_targets(self):
         target_types = ["category", "annotation"]
@@ -174,7 +187,9 @@ class Caltech101TestCase(datasets_utils.ImageDatasetTestCase):
             f"individually: {actual} != {expected}",
         )
 
-        for target_type, combined_target, individual_target in zip(target_types, combined_targets, individual_targets):
+        for target_type, combined_target, individual_target in zip(
+            target_types, combined_targets, individual_targets
+        ):
             with self.subTest(target_type=target_type):
                 actual = type(combined_target)
                 expected = type(individual_target)
@@ -208,12 +223,17 @@ class Caltech256TestCase(datasets_utils.ImageDatasetTestCase):
 
 class WIDERFaceTestCase(datasets_utils.ImageDatasetTestCase):
     DATASET_CLASS = datasets.WIDERFace
-    FEATURE_TYPES = (PIL.Image.Image, (dict, type(None)))  # test split returns None as target
-    ADDITIONAL_CONFIGS = datasets_utils.combinations_grid(split=('train', 'val', 'test'))
+    FEATURE_TYPES = (
+        PIL.Image.Image,
+        (dict, type(None)),
+    )  # test split returns None as target
+    ADDITIONAL_CONFIGS = datasets_utils.combinations_grid(
+        split=("train", "val", "test")
+    )
 
     def inject_fake_data(self, tmpdir, config):
-        widerface_dir = pathlib.Path(tmpdir) / 'widerface'
-        annotations_dir = widerface_dir / 'wider_face_split'
+        widerface_dir = pathlib.Path(tmpdir) / "widerface"
+        annotations_dir = widerface_dir / "wider_face_split"
         os.makedirs(annotations_dir)
 
         split_to_idx = split_to_num_examples = {
@@ -223,21 +243,21 @@ class WIDERFaceTestCase(datasets_utils.ImageDatasetTestCase):
         }
 
         # We need to create all folders regardless of the split in config
-        for split in ('train', 'val', 'test'):
+        for split in ("train", "val", "test"):
             split_idx = split_to_idx[split]
             num_examples = split_to_num_examples[split]
 
             datasets_utils.create_image_folder(
                 root=tmpdir,
-                name=widerface_dir / f'WIDER_{split}' / 'images' / '0--Parade',
+                name=widerface_dir / f"WIDER_{split}" / "images" / "0--Parade",
                 file_name_fn=lambda image_idx: f"0_Parade_marchingband_1_{split_idx + image_idx}.jpg",
                 num_examples=num_examples,
             )
 
             annotation_file_name = {
-                'train': annotations_dir / 'wider_face_train_bbx_gt.txt',
-                'val': annotations_dir / 'wider_face_val_bbx_gt.txt',
-                'test': annotations_dir / 'wider_face_test_filelist.txt',
+                "train": annotations_dir / "wider_face_train_bbx_gt.txt",
+                "val": annotations_dir / "wider_face_val_bbx_gt.txt",
+                "test": annotations_dir / "wider_face_test_filelist.txt",
             }[split]
 
             annotation_content = {
@@ -327,6 +347,7 @@ class CityScapesTestCase(datasets_utils.ImageDatasetTestCase):
             gt_dir = tmpdir / f"gt{mode}"
             for split in mode_to_splits[mode]:
                 for city in cities:
+
                     def make_image(name, size=10):
                         datasets_utils.create_image_folder(
                             root=gt_dir / split,
@@ -335,16 +356,24 @@ class CityScapesTestCase(datasets_utils.ImageDatasetTestCase):
                             size=size,
                             num_examples=1,
                         )
+
                     make_image(f"{city}_000000_000000_gt{mode}_instanceIds.png")
                     make_image(f"{city}_000000_000000_gt{mode}_labelIds.png")
-                    make_image(f"{city}_000000_000000_gt{mode}_color.png", size=(4, 10, 10))
+                    make_image(
+                        f"{city}_000000_000000_gt{mode}_color.png", size=(4, 10, 10)
+                    )
 
-                    polygon_target_name = gt_dir / split / city / f"{city}_000000_000000_gt{mode}_polygons.json"
+                    polygon_target_name = (
+                        gt_dir
+                        / split
+                        / city
+                        / f"{city}_000000_000000_gt{mode}_polygons.json"
+                    )
                     with open(polygon_target_name, "w") as outfile:
                         json.dump(polygon_target, outfile)
 
         # Create leftImg8bit folder
-        for split in ['test', 'train_extra', 'train', 'val']:
+        for split in ["test", "train_extra", "train", "val"]:
             for city in cities:
                 datasets_utils.create_image_folder(
                     root=tmpdir / "leftImg8bit" / split,
@@ -353,13 +382,13 @@ class CityScapesTestCase(datasets_utils.ImageDatasetTestCase):
                     num_examples=1,
                 )
 
-        info = {'num_examples': len(cities)}
-        if config['target_type'] == 'polygon':
-            info['expected_polygon_target'] = polygon_target
+        info = {"num_examples": len(cities)}
+        if config["target_type"] == "polygon":
+            info["expected_polygon_target"] = polygon_target
         return info
 
     def test_combined_targets(self):
-        target_types = ['semantic', 'polygon', 'color']
+        target_types = ["semantic", "polygon", "color"]
 
         with self.create_dataset(target_type=target_types) as (dataset, _):
             output = dataset[0]
@@ -373,32 +402,32 @@ class CityScapesTestCase(datasets_utils.ImageDatasetTestCase):
             self.assertTrue(isinstance(output[1][2], PIL.Image.Image))  # color
 
     def test_feature_types_target_color(self):
-        with self.create_dataset(target_type='color') as (dataset, _):
+        with self.create_dataset(target_type="color") as (dataset, _):
             color_img, color_target = dataset[0]
             self.assertTrue(isinstance(color_img, PIL.Image.Image))
             self.assertTrue(np.array(color_target).shape[2] == 4)
 
     def test_feature_types_target_polygon(self):
-        with self.create_dataset(target_type='polygon') as (dataset, info):
+        with self.create_dataset(target_type="polygon") as (dataset, info):
             polygon_img, polygon_target = dataset[0]
             self.assertTrue(isinstance(polygon_img, PIL.Image.Image))
-            self.assertEqual(polygon_target, info['expected_polygon_target'])
+            self.assertEqual(polygon_target, info["expected_polygon_target"])
 
 
 class ImageNetTestCase(datasets_utils.ImageDatasetTestCase):
     DATASET_CLASS = datasets.ImageNet
-    REQUIRED_PACKAGES = ('scipy',)
-    ADDITIONAL_CONFIGS = datasets_utils.combinations_grid(split=('train', 'val'))
+    REQUIRED_PACKAGES = ("scipy",)
+    ADDITIONAL_CONFIGS = datasets_utils.combinations_grid(split=("train", "val"))
 
     def inject_fake_data(self, tmpdir, config):
         tmpdir = pathlib.Path(tmpdir)
 
-        wnid = 'n01234567'
-        if config['split'] == 'train':
+        wnid = "n01234567"
+        if config["split"] == "train":
             num_examples = 3
             datasets_utils.create_image_folder(
                 root=tmpdir,
-                name=tmpdir / 'train' / wnid / wnid,
+                name=tmpdir / "train" / wnid / wnid,
                 file_name_fn=lambda image_idx: f"{wnid}_{image_idx}.JPEG",
                 num_examples=num_examples,
             )
@@ -406,13 +435,13 @@ class ImageNetTestCase(datasets_utils.ImageDatasetTestCase):
             num_examples = 1
             datasets_utils.create_image_folder(
                 root=tmpdir,
-                name=tmpdir / 'val' / wnid,
+                name=tmpdir / "val" / wnid,
                 file_name_fn=lambda image_ifx: "ILSVRC2012_val_0000000{image_idx}.JPEG",
                 num_examples=num_examples,
             )
 
         wnid_to_classes = {wnid: [1]}
-        torch.save((wnid_to_classes, None), tmpdir / 'meta.bin')
+        torch.save((wnid_to_classes, None), tmpdir / "meta.bin")
         return num_examples
 
 
@@ -435,21 +464,31 @@ class CIFAR10TestCase(datasets_utils.ImageDatasetTestCase):
         os.makedirs(tmpdir)
 
         num_images_per_file = 1
-        for name in itertools.chain(self._VERSION_CONFIG["train_files"], self._VERSION_CONFIG["test_files"]):
+        for name in itertools.chain(
+            self._VERSION_CONFIG["train_files"], self._VERSION_CONFIG["test_files"]
+        ):
             self._create_batch_file(tmpdir, name, num_images_per_file)
 
         categories = self._create_meta_file(tmpdir)
 
         return dict(
             num_examples=num_images_per_file
-            * len(self._VERSION_CONFIG["train_files"] if config["train"] else self._VERSION_CONFIG["test_files"]),
+            * len(
+                self._VERSION_CONFIG["train_files"]
+                if config["train"]
+                else self._VERSION_CONFIG["test_files"]
+            ),
             categories=categories,
         )
 
     def _create_batch_file(self, root, name, num_images):
         data = datasets_utils.create_image_or_video_tensor((num_images, 32 * 32 * 3))
-        labels = np.random.randint(0, self._VERSION_CONFIG["num_categories"], size=num_images).tolist()
-        self._create_binary_file(root, name, {"data": data, self._VERSION_CONFIG["labels_key"]: labels})
+        labels = np.random.randint(
+            0, self._VERSION_CONFIG["num_categories"], size=num_images
+        ).tolist()
+        self._create_binary_file(
+            root, name, {"data": data, self._VERSION_CONFIG["labels_key"]: labels}
+        )
 
     def _create_meta_file(self, root):
         categories = [
@@ -457,7 +496,9 @@ class CIFAR10TestCase(datasets_utils.ImageDatasetTestCase):
             for idx in range(self._VERSION_CONFIG["num_categories"])
         ]
         self._create_binary_file(
-            root, self._VERSION_CONFIG["meta_file"], {self._VERSION_CONFIG["categories_key"]: categories}
+            root,
+            self._VERSION_CONFIG["meta_file"],
+            {self._VERSION_CONFIG["categories_key"]: categories},
         )
         return categories
 
@@ -467,7 +508,9 @@ class CIFAR10TestCase(datasets_utils.ImageDatasetTestCase):
 
     def test_class_to_idx(self):
         with self.create_dataset() as (dataset, info):
-            expected = {category: label for label, category in enumerate(info["categories"])}
+            expected = {
+                category: label for label, category in enumerate(info["categories"])
+            }
             actual = dataset.class_to_idx
             self.assertEqual(actual, expected)
 
@@ -504,20 +547,27 @@ class CelebATestCase(datasets_utils.ImageDatasetTestCase):
         num_images, num_images_per_split = self._create_split_txt(base_folder)
 
         datasets_utils.create_image_folder(
-            base_folder, "img_align_celeba", lambda idx: f"{idx + 1:06d}.jpg", num_images
+            base_folder,
+            "img_align_celeba",
+            lambda idx: f"{idx + 1:06d}.jpg",
+            num_images,
         )
         attr_names = self._create_attr_txt(base_folder, num_images)
         self._create_identity_txt(base_folder, num_images)
         self._create_bbox_txt(base_folder, num_images)
         self._create_landmarks_txt(base_folder, num_images)
 
-        return dict(num_examples=num_images_per_split[config["split"]], attr_names=attr_names)
+        return dict(
+            num_examples=num_images_per_split[config["split"]], attr_names=attr_names
+        )
 
     def _create_split_txt(self, root):
         num_images_per_split = dict(train=3, valid=2, test=1)
 
         data = [
-            [self._SPLIT_TO_IDX[split]] for split, num_images in num_images_per_split.items() for _ in range(num_images)
+            [self._SPLIT_TO_IDX[split]]
+            for split, num_images in num_images_per_split.items()
+            for _ in range(num_images)
         ]
         self._create_txt(root, "list_eval_partition.txt", data)
 
@@ -526,8 +576,12 @@ class CelebATestCase(datasets_utils.ImageDatasetTestCase):
 
     def _create_attr_txt(self, root, num_images):
         header = ("5_o_Clock_Shadow", "Young")
-        data = torch.rand((num_images, len(header))).ge(0.5).int().mul(2).sub(1).tolist()
-        self._create_txt(root, "list_attr_celeba.txt", data, header=header, add_num_examples=True)
+        data = (
+            torch.rand((num_images, len(header))).ge(0.5).int().mul(2).sub(1).tolist()
+        )
+        self._create_txt(
+            root, "list_attr_celeba.txt", data, header=header, add_num_examples=True
+        )
         return header
 
     def _create_identity_txt(self, root, num_images):
@@ -538,15 +592,34 @@ class CelebATestCase(datasets_utils.ImageDatasetTestCase):
         header = ("x_1", "y_1", "width", "height")
         data = torch.randint(10, size=(num_images, len(header))).tolist()
         self._create_txt(
-            root, "list_bbox_celeba.txt", data, header=header, add_num_examples=True, add_image_id_to_header=True
+            root,
+            "list_bbox_celeba.txt",
+            data,
+            header=header,
+            add_num_examples=True,
+            add_image_id_to_header=True,
         )
 
     def _create_landmarks_txt(self, root, num_images):
         header = ("lefteye_x", "rightmouth_y")
         data = torch.randint(10, size=(num_images, len(header))).tolist()
-        self._create_txt(root, "list_landmarks_align_celeba.txt", data, header=header, add_num_examples=True)
+        self._create_txt(
+            root,
+            "list_landmarks_align_celeba.txt",
+            data,
+            header=header,
+            add_num_examples=True,
+        )
 
-    def _create_txt(self, root, name, data, header=None, add_num_examples=False, add_image_id_to_header=False):
+    def _create_txt(
+        self,
+        root,
+        name,
+        data,
+        header=None,
+        add_num_examples=False,
+        add_image_id_to_header=False,
+    ):
         with open(pathlib.Path(root) / name, "w") as fh:
             if add_num_examples:
                 fh.write(f"{len(data)}\n")
@@ -557,7 +630,9 @@ class CelebATestCase(datasets_utils.ImageDatasetTestCase):
                 fh.write(f"{' '.join(header)}\n")
 
             for idx, line in enumerate(data, 1):
-                fh.write(f"{' '.join((f'{idx:06d}.jpg', *[str(value) for value in line]))}\n")
+                fh.write(
+                    f"{' '.join((f'{idx:06d}.jpg', *[str(value) for value in line]))}\n"
+                )
 
     def test_combined_targets(self):
         target_types = ["attr", "identity", "bbox", "landmarks"]
@@ -580,7 +655,9 @@ class CelebATestCase(datasets_utils.ImageDatasetTestCase):
             f"individually: {actual} != {expected}",
         )
 
-        for target_type, combined_target, individual_target in zip(target_types, combined_targets, individual_targets):
+        for target_type, combined_target, individual_target in zip(
+            target_types, combined_targets, individual_targets
+        ):
             with self.subTest(target_type=target_type):
                 actual = type(combined_target)
                 expected = type(individual_target)
@@ -608,7 +685,8 @@ class VOCSegmentationTestCase(datasets_utils.ImageDatasetTestCase):
 
     ADDITIONAL_CONFIGS = (
         *datasets_utils.combinations_grid(
-            year=[f"20{year:02d}" for year in range(7, 13)], image_set=("train", "val", "trainval")
+            year=[f"20{year:02d}" for year in range(7, 13)],
+            image_set=("train", "val", "trainval"),
         ),
         dict(year="2007", image_set="test"),
         dict(year="2007-test", image_set="test"),
@@ -628,13 +706,21 @@ class VOCSegmentationTestCase(datasets_utils.ImageDatasetTestCase):
         base_dir = base_dir / "VOCdevkit" / f"VOC{year}"
         os.makedirs(base_dir)
 
-        num_images, num_images_per_image_set = self._create_image_set_files(base_dir, "ImageSets", is_test_set)
-        datasets_utils.create_image_folder(base_dir, "JPEGImages", lambda idx: f"{idx:06d}.jpg", num_images)
+        num_images, num_images_per_image_set = self._create_image_set_files(
+            base_dir, "ImageSets", is_test_set
+        )
+        datasets_utils.create_image_folder(
+            base_dir, "JPEGImages", lambda idx: f"{idx:06d}.jpg", num_images
+        )
 
-        datasets_utils.create_image_folder(base_dir, "SegmentationClass", lambda idx: f"{idx:06d}.png", num_images)
+        datasets_utils.create_image_folder(
+            base_dir, "SegmentationClass", lambda idx: f"{idx:06d}.png", num_images
+        )
         annotation = self._create_annotation_files(base_dir, "Annotations", num_images)
 
-        return dict(num_examples=num_images_per_image_set[image_set], annotation=annotation)
+        return dict(
+            num_examples=num_images_per_image_set[image_set], annotation=annotation
+        )
 
     def _create_image_set_files(self, root, name, is_test_set):
         root = pathlib.Path(root) / name
@@ -650,7 +736,9 @@ class VOCSegmentationTestCase(datasets_utils.ImageDatasetTestCase):
         shutil.copytree(src, root / "Segmentation")
 
         num_images = max(itertools.chain(*idcs.values())) + 1
-        num_images_per_image_set = dict([(image_set, len(idcs_)) for image_set, idcs_ in idcs.items()])
+        num_images_per_image_set = dict(
+            [(image_set, len(idcs_)) for image_set, idcs_ in idcs.items()]
+        )
         return num_images, num_images_per_image_set
 
     def _create_image_set_file(self, root, image_set, idcs):
@@ -739,24 +827,37 @@ class CocoDetectionTestCase(datasets_utils.ImageDatasetTestCase):
         num_annotations_per_image = 2
 
         files = datasets_utils.create_image_folder(
-            tmpdir, name=self._IMAGE_FOLDER, file_name_fn=lambda idx: f"{idx:012d}.jpg", num_examples=num_images
+            tmpdir,
+            name=self._IMAGE_FOLDER,
+            file_name_fn=lambda idx: f"{idx:012d}.jpg",
+            num_examples=num_images,
         )
         file_names = [file.relative_to(tmpdir / self._IMAGE_FOLDER) for file in files]
 
         annotation_folder = tmpdir / self._ANNOTATIONS_FOLDER
         os.makedirs(annotation_folder)
         info = self._create_annotation_file(
-            annotation_folder, self._ANNOTATIONS_FILE, file_names, num_annotations_per_image
+            annotation_folder,
+            self._ANNOTATIONS_FILE,
+            file_names,
+            num_annotations_per_image,
         )
 
         info["num_examples"] = num_images
         return info
 
-    def _create_annotation_file(self, root, name, file_names, num_annotations_per_image):
+    def _create_annotation_file(
+        self, root, name, file_names, num_annotations_per_image
+    ):
         image_ids = [int(file_name.stem) for file_name in file_names]
-        images = [dict(file_name=str(file_name), id=id) for file_name, id in zip(file_names, image_ids)]
+        images = [
+            dict(file_name=str(file_name), id=id)
+            for file_name, id in zip(file_names, image_ids)
+        ]
 
-        annotations, info = self._create_annotations(image_ids, num_annotations_per_image)
+        annotations, info = self._create_annotations(
+            image_ids, num_annotations_per_image
+        )
         self._create_json(root, name, dict(images=images, annotations=annotations))
 
         return info
@@ -781,7 +882,9 @@ class CocoCaptionsTestCase(CocoDetectionTestCase):
 
     def _create_annotations(self, image_ids, num_annotations_per_image):
         captions = [str(idx) for idx in range(num_annotations_per_image)]
-        annotations = datasets_utils.combinations_grid(image_id=image_ids, caption=captions)
+        annotations = datasets_utils.combinations_grid(
+            image_id=image_ids, caption=captions
+        )
         for id, annotation in enumerate(annotations):
             annotation["id"] = id
         return annotations, dict(captions=captions)
@@ -795,7 +898,9 @@ class CocoCaptionsTestCase(CocoDetectionTestCase):
 class UCF101TestCase(datasets_utils.VideoDatasetTestCase):
     DATASET_CLASS = datasets.UCF101
 
-    ADDITIONAL_CONFIGS = datasets_utils.combinations_grid(fold=(1, 2, 3), train=(True, False))
+    ADDITIONAL_CONFIGS = datasets_utils.combinations_grid(
+        fold=(1, 2, 3), train=(True, False)
+    )
 
     _VIDEO_FOLDER = "videos"
     _ANNOTATIONS_FOLDER = "annotations"
@@ -815,7 +920,9 @@ class UCF101TestCase(datasets_utils.VideoDatasetTestCase):
 
         annotations_folder = tmpdir / self._ANNOTATIONS_FOLDER
         os.makedirs(annotations_folder)
-        num_examples = self._create_annotation_files(annotations_folder, video_files, config["fold"], config["train"])
+        num_examples = self._create_annotation_files(
+            annotations_folder, video_files, config["fold"], config["train"]
+        )
 
         return num_examples
 
@@ -824,19 +931,24 @@ class UCF101TestCase(datasets_utils.VideoDatasetTestCase):
             return f"v_{cls}_g{(idx // clips_per_group) + 1:02d}_c{(idx % clips_per_group) + 1:02d}.avi"
 
         video_files = [
-            datasets_utils.create_video_folder(root, cls, lambda idx: file_name_fn(cls, idx), num_examples_per_class)
+            datasets_utils.create_video_folder(
+                root, cls, lambda idx: file_name_fn(cls, idx), num_examples_per_class
+            )
             for cls in ("ApplyEyeMakeup", "YoYo")
         ]
         return [path.relative_to(root) for path in itertools.chain(*video_files)]
 
     def _create_annotation_files(self, root, video_files, fold, train):
-        current_videos = random.sample(video_files, random.randrange(1, len(video_files) - 1))
+        current_videos = random.sample(
+            video_files, random.randrange(1, len(video_files) - 1)
+        )
         current_annotation = self._annotation_file_name(fold, train)
         self._create_annotation_file(root, current_annotation, current_videos)
 
         other_videos = set(video_files) - set(current_videos)
         other_annotations = [
-            self._annotation_file_name(fold, train) for fold, train in itertools.product((1, 2, 3), (True, False))
+            self._annotation_file_name(fold, train)
+            for fold, train in itertools.product((1, 2, 3), (True, False))
         ]
         other_annotations.remove(current_annotation)
         for name in other_annotations:
@@ -883,10 +995,7 @@ class LSUNTestCase(datasets_utils.ImageDatasetTestCase):
         return num_images
 
     @contextlib.contextmanager
-    def create_dataset(
-        self,
-        *args, **kwargs
-    ):
+    def create_dataset(self, *args, **kwargs):
         with super().create_dataset(*args, **kwargs) as output:
             yield output
             # Currently datasets.LSUN caches the keys in the current directory rather than in the root directory. Thus,
@@ -920,11 +1029,15 @@ class LSUNTestCase(datasets_utils.ImageDatasetTestCase):
 
         num_images = torch.randint(1, 4, size=()).item()
         format = "png"
-        files = datasets_utils.create_image_folder(root, folder, lambda idx: f"{idx}.{format}", num_images)
+        files = datasets_utils.create_image_folder(
+            root, folder, lambda idx: f"{idx}.{format}", num_images
+        )
 
         with lmdb.open(str(root / folder)) as env, env.begin(write=True) as txn:
             for file in files:
-                key = "".join(random.choice(hexdigits_lowercase) for _ in range(40)).encode()
+                key = "".join(
+                    random.choice(hexdigits_lowercase) for _ in range(40)
+                ).encode()
 
                 buffer = io.BytesIO()
                 PIL.Image.open(file).save(buffer, format)
@@ -953,7 +1066,7 @@ class KineticsTestCase(datasets_utils.VideoDatasetTestCase):
     def inject_fake_data(self, tmpdir, config):
         classes = ("Abseiling", "Zumba")
         num_videos_per_class = 2
-        tmpdir = pathlib.Path(tmpdir) / config['split']
+        tmpdir = pathlib.Path(tmpdir) / config["split"]
         digits = string.ascii_letters + string.digits + "-_"
         for cls in classes:
             datasets_utils.create_video_folder(
@@ -987,7 +1100,9 @@ class Kinetics400TestCase(datasets_utils.VideoDatasetTestCase):
 class HMDB51TestCase(datasets_utils.VideoDatasetTestCase):
     DATASET_CLASS = datasets.HMDB51
 
-    ADDITIONAL_CONFIGS = datasets_utils.combinations_grid(fold=(1, 2, 3), train=(True, False))
+    ADDITIONAL_CONFIGS = datasets_utils.combinations_grid(
+        fold=(1, 2, 3), train=(True, False)
+    )
 
     _VIDEO_FOLDER = "videos"
     _SPLITS_FOLDER = "splits"
@@ -1008,7 +1123,9 @@ class HMDB51TestCase(datasets_utils.VideoDatasetTestCase):
 
         splits_folder = tmpdir / self._SPLITS_FOLDER
         os.makedirs(splits_folder)
-        num_examples = self._create_split_files(splits_folder, video_files, config["fold"], config["train"])
+        num_examples = self._create_split_files(
+            splits_folder, video_files, config["fold"], config["train"]
+        )
 
         return num_examples
 
@@ -1035,11 +1152,16 @@ class HMDB51TestCase(datasets_utils.VideoDatasetTestCase):
         for cls, videos in video_files:
             num_videos += len(videos)
 
-            train_videos = set(random.sample(videos, random.randrange(1, len(videos) - 1)))
+            train_videos = set(
+                random.sample(videos, random.randrange(1, len(videos) - 1))
+            )
             num_train_videos += len(train_videos)
 
             with open(pathlib.Path(root) / f"{cls}_test_split{fold}.txt", "w") as fh:
-                fh.writelines(f"{file.name} {1 if file in train_videos else 2}\n" for file in videos)
+                fh.writelines(
+                    f"{file.name} {1 if file in train_videos else 2}\n"
+                    for file in videos
+                )
 
         return num_train_videos if train else (num_videos - num_train_videos)
 
@@ -1051,7 +1173,9 @@ class OmniglotTestCase(datasets_utils.ImageDatasetTestCase):
 
     def inject_fake_data(self, tmpdir, config):
         target_folder = (
-            pathlib.Path(tmpdir) / "omniglot-py" / f"images_{'background' if config['background'] else 'evaluation'}"
+            pathlib.Path(tmpdir)
+            / "omniglot-py"
+            / f"images_{'background' if config['background'] else 'evaluation'}"
         )
         os.makedirs(target_folder)
 
@@ -1068,7 +1192,10 @@ class OmniglotTestCase(datasets_utils.ImageDatasetTestCase):
             num_images_total += num_images
 
             datasets_utils.create_image_folder(
-                root / name, f"character{idx:02d}", lambda image_idx: f"{image_idx:02d}.png", num_images
+                root / name,
+                f"character{idx:02d}",
+                lambda image_idx: f"{image_idx:02d}.png",
+                num_images,
             )
 
         return num_images_total
@@ -1082,7 +1209,9 @@ class SBUTestCase(datasets_utils.ImageDatasetTestCase):
         num_images = 3
 
         dataset_folder = pathlib.Path(tmpdir) / "dataset"
-        images = datasets_utils.create_image_folder(tmpdir, "dataset", self._create_file_name, num_images)
+        images = datasets_utils.create_image_folder(
+            tmpdir, "dataset", self._create_file_name, num_images
+        )
 
         self._create_urls_txt(dataset_folder, images)
         self._create_captions_txt(dataset_folder, num_images)
@@ -1091,7 +1220,9 @@ class SBUTestCase(datasets_utils.ImageDatasetTestCase):
 
     def _create_file_name(self, idx):
         part1 = datasets_utils.create_random_string(10, string.digits)
-        part2 = datasets_utils.create_random_string(10, string.ascii_lowercase, string.digits[:6])
+        part2 = datasets_utils.create_random_string(
+            10, string.ascii_lowercase, string.digits[:6]
+        )
         return f"{part1}_{part2}.jpg"
 
     def _create_urls_txt(self, root, images):
@@ -1118,7 +1249,9 @@ class SEMEIONTestCase(datasets_utils.ImageDatasetTestCase):
         with open(pathlib.Path(tmpdir) / "semeion.data", "w") as fh:
             for image, one_hot_labels in zip(images, labels):
                 image_columns = " ".join([f"{pixel.item():.4f}" for pixel in image])
-                labels_columns = " ".join([str(label.item()) for label in one_hot_labels])
+                labels_columns = " ".join(
+                    [str(label.item()) for label in one_hot_labels]
+                )
                 fh.write(f"{image_columns} {labels_columns}\n")
 
         return num_images
@@ -1135,9 +1268,16 @@ class USPSTestCase(datasets_utils.ImageDatasetTestCase):
         images = torch.rand(num_images, 256) * 2 - 1
         labels = torch.randint(1, 11, size=(num_images,))
 
-        with bz2.open(pathlib.Path(tmpdir) / f"usps{'.t' if not config['train'] else ''}.bz2", "w") as fh:
+        with bz2.open(
+            pathlib.Path(tmpdir) / f"usps{'.t' if not config['train'] else ''}.bz2", "w"
+        ) as fh:
             for image, label in zip(images, labels):
-                line = " ".join((str(label.item()), *[f"{idx}:{pixel:.6f}" for idx, pixel in enumerate(image, 1)]))
+                line = " ".join(
+                    (
+                        str(label.item()),
+                        *[f"{idx}:{pixel:.6f}" for idx, pixel in enumerate(image, 1)],
+                    )
+                )
                 fh.write(f"{line}\n".encode())
 
         return num_images
@@ -1161,7 +1301,11 @@ class SBDatasetTestCase(datasets_utils.ImageDatasetTestCase):
         sizes = self._create_target_folder(tmpdir, "cls", num_images)
 
         datasets_utils.create_image_folder(
-            tmpdir, "img", lambda idx: f"{self._file_stem(idx)}.jpg", num_images, size=lambda idx: sizes[idx]
+            tmpdir,
+            "img",
+            lambda idx: f"{self._file_stem(idx)}.jpg",
+            num_images,
+            size=lambda idx: sizes[idx],
         )
 
         return num_images_per_image_set[config["image_set"]]
@@ -1175,7 +1319,9 @@ class SBDatasetTestCase(datasets_utils.ImageDatasetTestCase):
             self._create_split_file(root, split, idcs)
 
         num_images = max(itertools.chain(*splits.values())) + 1
-        num_images_per_split = dict([(split, len(idcs)) for split, idcs in splits.items()])
+        num_images_per_split = dict(
+            [(split, len(idcs)) for split, idcs in splits.items()]
+        )
         return num_images, num_images_per_split
 
     def _create_split_file(self, root, name, idcs):
@@ -1191,7 +1337,10 @@ class SBDatasetTestCase(datasets_utils.ImageDatasetTestCase):
         sizes = [torch.randint(1, 4, size=(2,)).tolist() for _ in range(num_images)]
         for idx, size in enumerate(sizes):
             content = dict(
-                GTcls=dict(Boundaries=self._create_boundaries(size), Segmentation=self._create_segmentation(size))
+                GTcls=dict(
+                    Boundaries=self._create_boundaries(size),
+                    Segmentation=self._create_segmentation(size),
+                )
             )
             io.savemat(target_folder / f"{self._file_stem(idx)}.mat", content)
 
@@ -1200,12 +1349,18 @@ class SBDatasetTestCase(datasets_utils.ImageDatasetTestCase):
     def _create_boundaries(self, size):
         sparse = datasets_utils.lazy_importer.scipy.sparse
         return [
-            [sparse.csc_matrix(torch.randint(0, 2, size=size, dtype=torch.uint8).numpy())]
+            [
+                sparse.csc_matrix(
+                    torch.randint(0, 2, size=size, dtype=torch.uint8).numpy()
+                )
+            ]
             for _ in range(self._NUM_CLASSES)
         ]
 
     def _create_segmentation(self, size):
-        return torch.randint(0, self._NUM_CLASSES + 1, size=size, dtype=torch.uint8).numpy()
+        return torch.randint(
+            0, self._NUM_CLASSES + 1, size=size, dtype=torch.uint8
+        ).numpy()
 
     def _file_stem(self, idx):
         return f"2008_{idx:06d}"
@@ -1222,7 +1377,9 @@ class FakeDataTestCase(datasets_utils.ImageDatasetTestCase):
         return config["size"]
 
     def test_not_found_or_corrupted(self):
-        self.skipTest("The data is generated at creation and thus cannot be non-existent or corrupted.")
+        self.skipTest(
+            "The data is generated at creation and thus cannot be non-existent or corrupted."
+        )
 
 
 class PhotoTourTestCase(datasets_utils.ImageDatasetTestCase):
@@ -1251,7 +1408,9 @@ class PhotoTourTestCase(datasets_utils.ImageDatasetTestCase):
 
         image_files = self._create_images(tmpdir, self._NAME, num_patches)
         point_ids, info_file = self._create_info_file(tmpdir / self._NAME, num_patches)
-        num_matches, matches_file = self._create_matches_file(tmpdir / self._NAME, num_patches, point_ids)
+        num_matches, matches_file = self._create_matches_file(
+            tmpdir / self._NAME, num_patches, point_ids
+        )
 
         self._create_archive(tmpdir, self._NAME, *image_files, info_file, matches_file)
 
@@ -1261,7 +1420,11 @@ class PhotoTourTestCase(datasets_utils.ImageDatasetTestCase):
         # The images in the PhotoTour dataset comprises of multiple grayscale patches of 64 x 64 pixels. Thus, the
         # smallest fake image is 64 x 64 pixels and comprises a single patch.
         return datasets_utils.create_image_folder(
-            root, name, lambda idx: f"patches{idx:04d}.bmp", num_images, size=(1, 64, 64)
+            root,
+            name,
+            lambda idx: f"patches{idx:04d}.bmp",
+            num_images,
+            size=(1, 64, 64),
         )
 
     def _create_info_file(self, root, num_images):
@@ -1296,7 +1459,9 @@ class PhotoTourTestCase(datasets_utils.ImageDatasetTestCase):
     @datasets_utils.test_all_configs
     def test_feature_types(self, config):
         feature_types = self.FEATURE_TYPES
-        self.FEATURE_TYPES = self._TRAIN_FEATURE_TYPES if config["train"] else self._TEST_FEATURE_TYPES
+        self.FEATURE_TYPES = (
+            self._TRAIN_FEATURE_TYPES if config["train"] else self._TEST_FEATURE_TYPES
+        )
         try:
             super().test_feature_types.__wrapped__(self, config)
         finally:
@@ -1324,16 +1489,25 @@ class Flickr8kTestCase(datasets_utils.ImageDatasetTestCase):
         tmpdir = pathlib.Path(tmpdir)
 
         images = self._create_images(tmpdir, self._IMAGES_FOLDER, num_images)
-        self._create_annotations_file(tmpdir, self._ANNOTATIONS_FILE, images, num_captions_per_image)
+        self._create_annotations_file(
+            tmpdir, self._ANNOTATIONS_FILE, images, num_captions_per_image
+        )
 
-        return dict(num_examples=num_images, captions=self._create_captions(num_captions_per_image))
+        return dict(
+            num_examples=num_images,
+            captions=self._create_captions(num_captions_per_image),
+        )
 
     def _create_images(self, root, name, num_images):
-        return datasets_utils.create_image_folder(root, name, self._image_file_name, num_images)
+        return datasets_utils.create_image_folder(
+            root, name, self._image_file_name, num_images
+        )
 
     def _image_file_name(self, idx):
         id = datasets_utils.create_random_string(10, string.digits)
-        checksum = datasets_utils.create_random_string(10, string.digits, string.ascii_lowercase[:6])
+        checksum = datasets_utils.create_random_string(
+            10, string.digits, string.ascii_lowercase[:6]
+        )
         size = datasets_utils.create_random_string(1, "qwcko")
         return f"{id}_{checksum}_{size}.jpg"
 
@@ -1416,10 +1590,16 @@ class MNISTTestCase(datasets_utils.ImageDatasetTestCase):
 
         num_images = self._num_images(config)
         self._create_binary_file(
-            raw_dir, self._images_file(config), (num_images, *self._IMAGES_SIZE), self._IMAGES_DTYPE
+            raw_dir,
+            self._images_file(config),
+            (num_images, *self._IMAGES_SIZE),
+            self._IMAGES_DTYPE,
         )
         self._create_binary_file(
-            raw_dir, self._labels_file(config), (num_images, *self._LABELS_SIZE), self._LABELS_DTYPE
+            raw_dir,
+            self._labels_file(config),
+            (num_images, *self._LABELS_SIZE),
+            self._LABELS_DTYPE,
         )
         return num_images
 
@@ -1464,7 +1644,8 @@ class EMNISTTestCase(MNISTTestCase):
 
     DEFAULT_CONFIG = dict(split="byclass")
     ADDITIONAL_CONFIGS = datasets_utils.combinations_grid(
-        split=("byclass", "bymerge", "balanced", "letters", "digits", "mnist"), train=(True, False)
+        split=("byclass", "bymerge", "balanced", "letters", "digits", "mnist"),
+        train=(True, False),
     )
 
     def _prefix(self, config):
@@ -1474,7 +1655,9 @@ class EMNISTTestCase(MNISTTestCase):
 class QMNISTTestCase(MNISTTestCase):
     DATASET_CLASS = datasets.QMNIST
 
-    ADDITIONAL_CONFIGS = datasets_utils.combinations_grid(what=("train", "test", "test10k", "nist"))
+    ADDITIONAL_CONFIGS = datasets_utils.combinations_grid(
+        what=("train", "test", "test10k", "nist")
+    )
 
     _LABELS_SIZE = (8,)
     _LABELS_DTYPE = torch.int32
@@ -1532,9 +1715,13 @@ class DatasetFolderTestCase(datasets_utils.ImageDatasetTestCase):
     # 'test_is_valid_file()' method.
     DEFAULT_CONFIG = dict(extensions=_EXTENSIONS)
     ADDITIONAL_CONFIGS = (
-        *datasets_utils.combinations_grid(extensions=[(ext,) for ext in _IMAGE_EXTENSIONS]),
+        *datasets_utils.combinations_grid(
+            extensions=[(ext,) for ext in _IMAGE_EXTENSIONS]
+        ),
         dict(extensions=_IMAGE_EXTENSIONS),
-        *datasets_utils.combinations_grid(extensions=[(ext,) for ext in _VIDEO_EXTENSIONS]),
+        *datasets_utils.combinations_grid(
+            extensions=[(ext,) for ext in _VIDEO_EXTENSIONS]
+        ),
         dict(extensions=_VIDEO_EXTENSIONS),
     )
 
@@ -1542,7 +1729,9 @@ class DatasetFolderTestCase(datasets_utils.ImageDatasetTestCase):
         return tmpdir, lambda x: x
 
     def inject_fake_data(self, tmpdir, config):
-        extensions = config["extensions"] or self._is_valid_file_to_extensions(config["is_valid_file"])
+        extensions = config["extensions"] or self._is_valid_file_to_extensions(
+            config["is_valid_file"]
+        )
 
         num_examples_total = 0
         classes = []
@@ -1557,7 +1746,9 @@ class DatasetFolderTestCase(datasets_utils.ImageDatasetTestCase):
             )
 
             num_examples = torch.randint(1, 3, size=()).item()
-            create_example_folder(tmpdir, cls, lambda idx: self._file_name_fn(cls, ext, idx), num_examples)
+            create_example_folder(
+                tmpdir, cls, lambda idx: self._file_name_fn(cls, ext, idx), num_examples
+            )
 
             num_examples_total += num_examples
             classes.append(cls)
@@ -1576,7 +1767,9 @@ class DatasetFolderTestCase(datasets_utils.ImageDatasetTestCase):
         # We need to explicitly pass extensions=None here or otherwise it would be filled by the value from the
         # DEFAULT_CONFIG.
         with self.create_dataset(
-                config, extensions=None, is_valid_file=lambda file: pathlib.Path(file).suffix[1:] in extensions
+            config,
+            extensions=None,
+            is_valid_file=lambda file: pathlib.Path(file).suffix[1:] in extensions,
         ) as (dataset, info):
             self.assertEqual(len(dataset), info["num_examples"])
 
@@ -1596,7 +1789,9 @@ class ImageFolderTestCase(datasets_utils.ImageDatasetTestCase):
             num_examples = torch.randint(1, 3, size=()).item()
             num_examples_total += num_examples
 
-            datasets_utils.create_image_folder(tmpdir, cls, lambda idx: f"{cls}_{idx}.png", num_examples)
+            datasets_utils.create_image_folder(
+                tmpdir, cls, lambda idx: f"{cls}_{idx}.png", num_examples
+            )
 
         return dict(num_examples=num_examples_total, classes=classes)
 
@@ -1608,7 +1803,10 @@ class ImageFolderTestCase(datasets_utils.ImageDatasetTestCase):
 
 class KittiTestCase(datasets_utils.ImageDatasetTestCase):
     DATASET_CLASS = datasets.Kitti
-    FEATURE_TYPES = (PIL.Image.Image, (list, type(None)))  # test split returns None as target
+    FEATURE_TYPES = (
+        PIL.Image.Image,
+        (list, type(None)),
+    )  # test split returns None as target
     ADDITIONAL_CONFIGS = datasets_utils.combinations_grid(train=(True, False))
 
     def inject_fake_data(self, tmpdir, config):
@@ -1634,7 +1832,9 @@ class KittiTestCase(datasets_utils.ImageDatasetTestCase):
                 for image_idx in range(num_examples):
                     target_file_dir = os.path.join(kitti_dir, "training", "label_2")
                     os.makedirs(target_file_dir)
-                    target_file_name = os.path.join(target_file_dir, f"{image_idx:06d}.txt")
+                    target_file_name = os.path.join(
+                        target_file_dir, f"{image_idx:06d}.txt"
+                    )
                     target_contents = "Pedestrian 0.00 0 -0.20 712.40 143.00 810.73 307.92 1.89 0.48 1.20 1.84 1.47 8.41 0.01\n"  # noqa
                     with open(target_file_name, "w") as target_file:
                         target_file.write(target_contents)
@@ -1645,30 +1845,27 @@ class KittiTestCase(datasets_utils.ImageDatasetTestCase):
 class SvhnTestCase(datasets_utils.ImageDatasetTestCase):
     DATASET_CLASS = datasets.SVHN
     REQUIRED_PACKAGES = ("scipy",)
-    ADDITIONAL_CONFIGS = datasets_utils.combinations_grid(split=("train", "test", "extra"))
+    ADDITIONAL_CONFIGS = datasets_utils.combinations_grid(
+        split=("train", "test", "extra")
+    )
 
     def inject_fake_data(self, tmpdir, config):
         import scipy.io as sio
 
         split = config["split"]
-        num_examples = {
-            "train": 2,
-            "test": 3,
-            "extra": 4,
-        }.get(split)
+        num_examples = {"train": 2, "test": 3, "extra": 4,}.get(split)
 
         file = f"{split}_32x32.mat"
         images = np.zeros((32, 32, 3, num_examples), dtype=np.uint8)
         targets = np.zeros((num_examples,), dtype=np.uint8)
-        sio.savemat(os.path.join(tmpdir, file), {'X': images, 'y': targets})
+        sio.savemat(os.path.join(tmpdir, file), {"X": images, "y": targets})
         return num_examples
 
 
 class Places365TestCase(datasets_utils.ImageDatasetTestCase):
     DATASET_CLASS = datasets.Places365
     ADDITIONAL_CONFIGS = datasets_utils.combinations_grid(
-        split=("train-standard", "train-challenge", "val"),
-        small=(False, True),
+        split=("train-standard", "train-challenge", "val"), small=(False, True),
     )
     _CATEGORIES = "categories_places365.txt"
     # {split: file}
@@ -1695,8 +1892,10 @@ class Places365TestCase(datasets_utils.ImageDatasetTestCase):
     # (file, idx)
     _FILE_LIST_CONTENT = (
         ("Places365_val_00000001.png", 0),
-        *((f"{category}/Places365_train_00000001.png", idx)
-          for category, idx in _CATEGORIES_CONTENT),
+        *(
+            (f"{category}/Places365_train_00000001.png", idx)
+            for category, idx in _CATEGORIES_CONTENT
+        ),
     )
 
     @staticmethod
@@ -1722,7 +1921,9 @@ class Places365TestCase(datasets_utils.ImageDatasetTestCase):
     @staticmethod
     def _make_devkit_archive(root, split):
         Places365TestCase._make_categories_txt(root, Places365TestCase._CATEGORIES)
-        Places365TestCase._make_file_list_txt(root, Places365TestCase._FILE_LISTS[split])
+        Places365TestCase._make_file_list_txt(
+            root, Places365TestCase._FILE_LISTS[split]
+        )
 
     @staticmethod
     def _make_images_archive(root, split, small):
@@ -1731,13 +1932,18 @@ class Places365TestCase(datasets_utils.ImageDatasetTestCase):
         files, idcs = zip(*Places365TestCase._FILE_LIST_CONTENT)
         images = [f.lstrip("/").replace("/", os.sep) for f in files]
         for image in images:
-            Places365TestCase._make_image(os.path.join(root, folder_name, image), image_size)
+            Places365TestCase._make_image(
+                os.path.join(root, folder_name, image), image_size
+            )
 
-        return [(os.path.join(root, folder_name, image), idx) for image, idx in zip(images, idcs)]
+        return [
+            (os.path.join(root, folder_name, image), idx)
+            for image, idx in zip(images, idcs)
+        ]
 
     def inject_fake_data(self, tmpdir, config):
-        self._make_devkit_archive(tmpdir, config['split'])
-        return len(self._make_images_archive(tmpdir, config['split'], config['small']))
+        self._make_devkit_archive(tmpdir, config["split"])
+        return len(self._make_images_archive(tmpdir, config["split"], config["small"]))
 
     def test_classes(self):
         classes = list(map(lambda x: x[0], self._CATEGORIES_CONTENT))
@@ -1751,7 +1957,7 @@ class Places365TestCase(datasets_utils.ImageDatasetTestCase):
 
     def test_images_download_preexisting(self):
         with self.assertRaises(RuntimeError):
-            with self.create_dataset({'download': True}):
+            with self.create_dataset({"download": True}):
                 pass
 
 
@@ -1760,7 +1966,12 @@ class INaturalistTestCase(datasets_utils.ImageDatasetTestCase):
     FEATURE_TYPES = (PIL.Image.Image, (int, tuple))
 
     ADDITIONAL_CONFIGS = datasets_utils.combinations_grid(
-        target_type=("kingdom", "full", "genus", ["kingdom", "phylum", "class", "order", "family", "genus", "full"]),
+        target_type=(
+            "kingdom",
+            "full",
+            "genus",
+            ["kingdom", "phylum", "class", "order", "family", "genus", "full"],
+        ),
         version=("2021_train",),
     )
 
@@ -1783,13 +1994,26 @@ class INaturalistTestCase(datasets_utils.ImageDatasetTestCase):
         return num_images_per_category * len(categories)
 
     def test_targets(self):
-        target_types = ["kingdom", "phylum", "class", "order", "family", "genus", "full"]
+        target_types = [
+            "kingdom",
+            "phylum",
+            "class",
+            "order",
+            "family",
+            "genus",
+            "full",
+        ]
 
-        with self.create_dataset(target_type=target_types, version="2021_valid") as (dataset, _):
+        with self.create_dataset(target_type=target_types, version="2021_valid") as (
+            dataset,
+            _,
+        ):
             items = [d[1] for d in dataset]
             for i, item in enumerate(items):
                 self.assertEqual(dataset.category_name("kingdom", item[0]), "Akingdom")
-                self.assertEqual(dataset.category_name("phylum", item[1]), f"{i // 3}phylum")
+                self.assertEqual(
+                    dataset.category_name("phylum", item[1]), f"{i // 3}phylum"
+                )
                 self.assertEqual(item[6], i // 3)
 
 

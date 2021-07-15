@@ -74,7 +74,11 @@ class LazyImporter:
             setattr(
                 type(self),
                 module,
-                property(lambda self, module=module, submodules=submodules: LazyImporter._import(module, submodules)),
+                property(
+                    lambda self, module=module, submodules=submodules: LazyImporter._import(
+                        module, submodules
+                    )
+                ),
             )
 
     @staticmethod
@@ -133,7 +137,10 @@ def test_all_configs(test):
 
     def maybe_remove_duplicates(configs):
         try:
-            return [dict(config_) for config_ in set(tuple(sorted(config.items())) for config in configs)]
+            return [
+                dict(config_)
+                for config_ in set(tuple(sorted(config.items())) for config in configs)
+            ]
         except TypeError:
             # A TypeError will be raised if a value of any config is not hashable, e.g. a list. In that case duplicate
             # removal would be a lot more elaborate and we simply bail out.
@@ -173,7 +180,10 @@ def combinations_grid(**kwargs):
             {'foo': 'baz', 'spam': 'ham'}
         ]
     """
-    return [dict(zip(kwargs.keys(), values)) for values in itertools.product(*kwargs.values())]
+    return [
+        dict(zip(kwargs.keys(), values))
+        for values in itertools.product(*kwargs.values())
+    ]
 
 
 class DatasetTestCase(unittest.TestCase):
@@ -300,7 +310,9 @@ class DatasetTestCase(unittest.TestCase):
         """
         return (tmpdir,)
 
-    def inject_fake_data(self, tmpdir: str, config: Dict[str, Any]) -> Union[int, Dict[str, Any]]:
+    def inject_fake_data(
+        self, tmpdir: str, config: Dict[str, Any]
+    ) -> Union[int, Dict[str, Any]]:
         """Inject fake data for dataset into a temporary directory.
 
         During the creation of the dataset the download and extract logic is disabled. Thus, the fake data injected
@@ -319,7 +331,9 @@ class DatasetTestCase(unittest.TestCase):
             2. (Dict[str, Any]): Additional information about the injected fake data. Must contain the field
                 ``"num_examples"`` that corresponds to the number of examples in the dataset to be created.
         """
-        raise NotImplementedError("You need to provide fake data in order for the tests to run.")
+        raise NotImplementedError(
+            "You need to provide fake data in order for the tests to run."
+        )
 
     @contextlib.contextmanager
     def create_dataset(
@@ -366,7 +380,9 @@ class DatasetTestCase(unittest.TestCase):
         if other_kwargs:
             complete_config.update(other_kwargs)
 
-        if "download" in self._HAS_SPECIAL_KWARG and special_kwargs.get("download", False):
+        if "download" in self._HAS_SPECIAL_KWARG and special_kwargs.get(
+            "download", False
+        ):
             # override download param to False param if its default is truthy
             special_kwargs["download"] = False
 
@@ -376,7 +392,11 @@ class DatasetTestCase(unittest.TestCase):
 
         with get_tmp_dir() as tmpdir:
             args = self.dataset_args(tmpdir, complete_config)
-            info = self._inject_fake_data(tmpdir, complete_config) if inject_fake_data else None
+            info = (
+                self._inject_fake_data(tmpdir, complete_config)
+                if inject_fake_data
+                else None
+            )
 
             with self._maybe_apply_patches(patchers), disable_console_output():
                 dataset = self.DATASET_CLASS(*args, **complete_config, **special_kwargs)
@@ -418,7 +438,9 @@ class DatasetTestCase(unittest.TestCase):
             defaults.append(
                 {
                     kwarg: default
-                    for kwarg, default in zip(argspec.args[-len(argspec.defaults):], argspec.defaults)
+                    for kwarg, default in zip(
+                        argspec.args[-len(argspec.defaults) :], argspec.defaults
+                    )
                     if not kwarg.startswith("_")
                 }
             )
@@ -444,7 +466,9 @@ class DatasetTestCase(unittest.TestCase):
     @classmethod
     def _process_optional_public_class_attributes(cls):
         def check_config(config, name):
-            special_kwargs = tuple(f"'{name}'" for name in cls._SPECIAL_KWARGS if name in config)
+            special_kwargs = tuple(
+                f"'{name}'" for name in cls._SPECIAL_KWARGS if name in config
+            )
             if special_kwargs:
                 raise UsageError(
                     f"{name} contains a value for the parameter(s) {', '.join(special_kwargs)}. "
@@ -476,7 +500,10 @@ class DatasetTestCase(unittest.TestCase):
 
     def _split_kwargs(self, kwargs):
         special_kwargs = kwargs.copy()
-        other_kwargs = {key: special_kwargs.pop(key) for key in set(special_kwargs.keys()) - self._SPECIAL_KWARGS}
+        other_kwargs = {
+            key: special_kwargs.pop(key)
+            for key in set(special_kwargs.keys()) - self._SPECIAL_KWARGS
+        }
         return special_kwargs, other_kwargs
 
     def _inject_fake_data(self, tmpdir, config):
@@ -503,11 +530,17 @@ class DatasetTestCase(unittest.TestCase):
 
     def _patch_download_extract(self):
         module = inspect.getmodule(self.DATASET_CLASS).__name__
-        return {unittest.mock.patch(f"{module}.{function}") for function in self._DOWNLOAD_EXTRACT_FUNCTIONS}
+        return {
+            unittest.mock.patch(f"{module}.{function}")
+            for function in self._DOWNLOAD_EXTRACT_FUNCTIONS
+        }
 
     def _patch_checks(self):
         module = inspect.getmodule(self.DATASET_CLASS).__name__
-        return {unittest.mock.patch(f"{module}.{function}", return_value=True) for function in self._CHECK_FUNCTIONS}
+        return {
+            unittest.mock.patch(f"{module}.{function}", return_value=True)
+            for function in self._CHECK_FUNCTIONS
+        }
 
     @contextlib.contextmanager
     def _maybe_apply_patches(self, patchers):
@@ -549,7 +582,9 @@ class DatasetTestCase(unittest.TestCase):
             else:
                 example = (example,)
 
-            for idx, (feature, expected_feature_type) in enumerate(zip(example, self.FEATURE_TYPES)):
+            for idx, (feature, expected_feature_type) in enumerate(
+                zip(example, self.FEATURE_TYPES)
+            ):
                 with self.subTest(idx=idx):
                     self.assertIsInstance(feature, expected_feature_type)
 
@@ -560,7 +595,9 @@ class DatasetTestCase(unittest.TestCase):
 
     @test_all_configs
     def test_transforms(self, config):
-        mock = unittest.mock.Mock(wraps=lambda *args: args[0] if len(args) == 1 else args)
+        mock = unittest.mock.Mock(
+            wraps=lambda *args: args[0] if len(args) == 1 else args
+        )
         for kwarg in self._TRANSFORM_KWARGS:
             if kwarg not in self._HAS_SPECIAL_KWARG:
                 continue
@@ -641,7 +678,9 @@ class VideoDatasetTestCase(DatasetTestCase):
 
     def _set_default_frames_per_clip(self, inject_fake_data):
         argspec = inspect.getfullargspec(self.DATASET_CLASS.__init__)
-        args_without_default = argspec.args[1:(-len(argspec.defaults) if argspec.defaults else None)]
+        args_without_default = argspec.args[
+            1 : (-len(argspec.defaults) if argspec.defaults else None)
+        ]
         frames_per_clip_last = args_without_default[-1] == "frames_per_clip"
 
         @functools.wraps(inject_fake_data)
@@ -665,7 +704,10 @@ def create_image_or_video_tensor(size: Sequence[int]) -> torch.Tensor:
 
 
 def create_image_file(
-    root: Union[pathlib.Path, str], name: Union[pathlib.Path, str], size: Union[Sequence[int], int] = 10, **kwargs: Any
+    root: Union[pathlib.Path, str],
+    name: Union[pathlib.Path, str],
+    size: Union[Sequence[int], int] = 10,
+    **kwargs: Any,
 ) -> pathlib.Path:
     """Create an image file from random data.
 
@@ -705,7 +747,9 @@ def create_image_folder(
     name: Union[pathlib.Path, str],
     file_name_fn: Callable[[int], str],
     num_examples: int,
-    size: Optional[Union[Sequence[int], int, Callable[[int], Union[Sequence[int], int]]]] = None,
+    size: Optional[
+        Union[Sequence[int], int, Callable[[int], Union[Sequence[int], int]]]
+    ] = None,
     **kwargs: Any,
 ) -> List[pathlib.Path]:
     """Create a folder of random images.
@@ -738,7 +782,12 @@ def create_image_folder(
     os.makedirs(root, exist_ok=True)
 
     return [
-        create_image_file(root, file_name_fn(idx), size=size(idx) if callable(size) else size, **kwargs)
+        create_image_file(
+            root,
+            file_name_fn(idx),
+            size=size(idx) if callable(size) else size,
+            **kwargs,
+        )
         for idx in range(num_examples)
     ]
 
@@ -791,7 +840,9 @@ def create_video_folder(
     name: Union[str, pathlib.Path],
     file_name_fn: Callable[[int], str],
     num_examples: int,
-    size: Optional[Union[Sequence[int], int, Callable[[int], Union[Sequence[int], int]]]] = None,
+    size: Optional[
+        Union[Sequence[int], int, Callable[[int], Union[Sequence[int], int]]]
+    ] = None,
     fps=25,
     **kwargs,
 ) -> List[pathlib.Path]:
@@ -825,14 +876,21 @@ def create_video_folder(
             num_channels = 3
             # The 'libx264' video codec, which is the default of torchvision.io.write_video, requires the height and
             # width of the video to be divisible by 2.
-            height, width = (torch.randint(2, 6, size=(2,), dtype=torch.int) * 2).tolist()
+            height, width = (
+                torch.randint(2, 6, size=(2,), dtype=torch.int) * 2
+            ).tolist()
             return (num_frames, num_channels, height, width)
 
     root = pathlib.Path(root) / name
     os.makedirs(root, exist_ok=True)
 
     return [
-        create_video_file(root, file_name_fn(idx), size=size(idx) if callable(size) else size, **kwargs)
+        create_video_file(
+            root,
+            file_name_fn(idx),
+            size=size(idx) if callable(size) else size,
+            **kwargs,
+        )
         for idx in range(num_examples)
     ]
 

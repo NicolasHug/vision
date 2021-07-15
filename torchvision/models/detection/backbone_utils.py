@@ -1,6 +1,9 @@
 import warnings
 from torch import nn
-from torchvision.ops.feature_pyramid_network import FeaturePyramidNetwork, LastLevelMaxPool
+from torchvision.ops.feature_pyramid_network import (
+    FeaturePyramidNetwork,
+    LastLevelMaxPool,
+)
 
 from torchvision.ops import misc as misc_nn_ops
 from .._utils import IntermediateLayerGetter
@@ -26,7 +29,10 @@ class BackboneWithFPN(nn.Module):
     Attributes:
         out_channels (int): the number of channels in the FPN
     """
-    def __init__(self, backbone, return_layers, in_channels_list, out_channels, extra_blocks=None):
+
+    def __init__(
+        self, backbone, return_layers, in_channels_list, out_channels, extra_blocks=None
+    ):
         super(BackboneWithFPN, self).__init__()
 
         if extra_blocks is None:
@@ -52,7 +58,7 @@ def resnet_fpn_backbone(
     norm_layer=misc_nn_ops.FrozenBatchNorm2d,
     trainable_layers=3,
     returned_layers=None,
-    extra_blocks=None
+    extra_blocks=None,
 ):
     """
     Constructs a specified ResNet backbone with FPN on top. Freezes the specified number of layers in the backbone.
@@ -90,14 +96,16 @@ def resnet_fpn_backbone(
             default a ``LastLevelMaxPool`` is used.
     """
     backbone = resnet.__dict__[backbone_name](
-        pretrained=pretrained,
-        norm_layer=norm_layer)
+        pretrained=pretrained, norm_layer=norm_layer
+    )
 
     # select layers that wont be frozen
     assert 0 <= trainable_layers <= 5
-    layers_to_train = ['layer4', 'layer3', 'layer2', 'layer1', 'conv1'][:trainable_layers]
+    layers_to_train = ["layer4", "layer3", "layer2", "layer1", "conv1"][
+        :trainable_layers
+    ]
     if trainable_layers == 5:
-        layers_to_train.append('bn1')
+        layers_to_train.append("bn1")
     for name, parameter in backbone.named_parameters():
         if all([not name.startswith(layer) for layer in layers_to_train]):
             parameter.requires_grad_(False)
@@ -108,22 +116,33 @@ def resnet_fpn_backbone(
     if returned_layers is None:
         returned_layers = [1, 2, 3, 4]
     assert min(returned_layers) > 0 and max(returned_layers) < 5
-    return_layers = {f'layer{k}': str(v) for v, k in enumerate(returned_layers)}
+    return_layers = {f"layer{k}": str(v) for v, k in enumerate(returned_layers)}
 
     in_channels_stage2 = backbone.inplanes // 8
     in_channels_list = [in_channels_stage2 * 2 ** (i - 1) for i in returned_layers]
     out_channels = 256
-    return BackboneWithFPN(backbone, return_layers, in_channels_list, out_channels, extra_blocks=extra_blocks)
+    return BackboneWithFPN(
+        backbone,
+        return_layers,
+        in_channels_list,
+        out_channels,
+        extra_blocks=extra_blocks,
+    )
 
 
-def _validate_trainable_layers(pretrained, trainable_backbone_layers, max_value, default_value):
+def _validate_trainable_layers(
+    pretrained, trainable_backbone_layers, max_value, default_value
+):
     # dont freeze any layers if pretrained model or backbone is not used
     if not pretrained:
         if trainable_backbone_layers is not None:
             warnings.warn(
                 "Changing trainable_backbone_layers has not effect if "
                 "neither pretrained nor pretrained_backbone have been set to True, "
-                "falling back to trainable_backbone_layers={} so that all layers are trainable".format(max_value))
+                "falling back to trainable_backbone_layers={} so that all layers are trainable".format(
+                    max_value
+                )
+            )
         trainable_backbone_layers = max_value
 
     # by default freeze first blocks
@@ -140,18 +159,28 @@ def mobilenet_backbone(
     norm_layer=misc_nn_ops.FrozenBatchNorm2d,
     trainable_layers=2,
     returned_layers=None,
-    extra_blocks=None
+    extra_blocks=None,
 ):
-    backbone = mobilenet.__dict__[backbone_name](pretrained=pretrained, norm_layer=norm_layer).features
+    backbone = mobilenet.__dict__[backbone_name](
+        pretrained=pretrained, norm_layer=norm_layer
+    ).features
 
     # Gather the indices of blocks which are strided. These are the locations of C1, ..., Cn-1 blocks.
     # The first and last blocks are always included because they are the C0 (conv1) and Cn.
-    stage_indices = [0] + [i for i, b in enumerate(backbone) if getattr(b, "_is_cn", False)] + [len(backbone) - 1]
+    stage_indices = (
+        [0]
+        + [i for i, b in enumerate(backbone) if getattr(b, "_is_cn", False)]
+        + [len(backbone) - 1]
+    )
     num_stages = len(stage_indices)
 
     # find the index of the layer from which we wont freeze
     assert 0 <= trainable_layers <= num_stages
-    freeze_before = len(backbone) if trainable_layers == 0 else stage_indices[num_stages - trainable_layers]
+    freeze_before = (
+        len(backbone)
+        if trainable_layers == 0
+        else stage_indices[num_stages - trainable_layers]
+    )
 
     for b in backbone[:freeze_before]:
         for parameter in b.parameters():
@@ -165,10 +194,20 @@ def mobilenet_backbone(
         if returned_layers is None:
             returned_layers = [num_stages - 2, num_stages - 1]
         assert min(returned_layers) >= 0 and max(returned_layers) < num_stages
-        return_layers = {f'{stage_indices[k]}': str(v) for v, k in enumerate(returned_layers)}
+        return_layers = {
+            f"{stage_indices[k]}": str(v) for v, k in enumerate(returned_layers)
+        }
 
-        in_channels_list = [backbone[stage_indices[i]].out_channels for i in returned_layers]
-        return BackboneWithFPN(backbone, return_layers, in_channels_list, out_channels, extra_blocks=extra_blocks)
+        in_channels_list = [
+            backbone[stage_indices[i]].out_channels for i in returned_layers
+        ]
+        return BackboneWithFPN(
+            backbone,
+            return_layers,
+            in_channels_list,
+            out_channels,
+            extra_blocks=extra_blocks,
+        )
     else:
         m = nn.Sequential(
             backbone,
