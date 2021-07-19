@@ -1,23 +1,27 @@
+import sys
+
 import torch
 import torch.nn as nn
-from ..._internally_replaced_utils import load_state_dict_from_url
+
 import torchvision.models.shufflenetv2
-import sys
+from ..._internally_replaced_utils import load_state_dict_from_url
 from .utils import _replace_relu, quantize_model
 
-shufflenetv2 = sys.modules['torchvision.models.shufflenetv2']
+shufflenetv2 = sys.modules["torchvision.models.shufflenetv2"]
 
 __all__ = [
-    'QuantizableShuffleNetV2', 'shufflenet_v2_x0_5', 'shufflenet_v2_x1_0',
-    'shufflenet_v2_x1_5', 'shufflenet_v2_x2_0'
+    "QuantizableShuffleNetV2",
+    "shufflenet_v2_x0_5",
+    "shufflenet_v2_x1_0",
+    "shufflenet_v2_x1_5",
+    "shufflenet_v2_x2_0",
 ]
 
 quant_model_urls = {
-    'shufflenetv2_x0.5_fbgemm': None,
-    'shufflenetv2_x1.0_fbgemm':
-        'https://download.pytorch.org/models/quantized/shufflenetv2_x1_fbgemm-db332c57.pth',
-    'shufflenetv2_x1.5_fbgemm': None,
-    'shufflenetv2_x2.0_fbgemm': None,
+    "shufflenetv2_x0.5_fbgemm": None,
+    "shufflenetv2_x1.0_fbgemm": "https://download.pytorch.org/models/quantized/shufflenetv2_x1_fbgemm-db332c57.pth",
+    "shufflenetv2_x1.5_fbgemm": None,
+    "shufflenetv2_x2.0_fbgemm": None,
 }
 
 
@@ -40,7 +44,9 @@ class QuantizableInvertedResidual(shufflenetv2.InvertedResidual):
 
 class QuantizableShuffleNetV2(shufflenetv2.ShuffleNetV2):
     def __init__(self, *args, **kwargs):
-        super(QuantizableShuffleNetV2, self).__init__(*args, inverted_residual=QuantizableInvertedResidual, **kwargs)
+        super(QuantizableShuffleNetV2, self).__init__(
+            *args, inverted_residual=QuantizableInvertedResidual, **kwargs
+        )
         self.quant = torch.quantization.QuantStub()
         self.dequant = torch.quantization.DeQuantStub()
 
@@ -80,19 +86,18 @@ def _shufflenetv2(arch, pretrained, progress, quantize, *args, **kwargs):
 
     if quantize:
         # TODO use pretrained as a string to specify the backend
-        backend = 'fbgemm'
+        backend = "fbgemm"
         quantize_model(model, backend)
     else:
         assert pretrained in [True, False]
 
     if pretrained:
         if quantize:
-            model_url = quant_model_urls[arch + '_' + backend]
+            model_url = quant_model_urls[arch + "_" + backend]
         else:
             model_url = shufflenetv2.model_urls[arch]
 
-        state_dict = load_state_dict_from_url(model_url,
-                                              progress=progress)
+        state_dict = load_state_dict_from_url(model_url, progress=progress)
 
         model.load_state_dict(state_dict)
     return model
@@ -109,8 +114,15 @@ def shufflenet_v2_x0_5(pretrained=False, progress=True, quantize=False, **kwargs
         progress (bool): If True, displays a progress bar of the download to stderr
         quantize (bool): If True, return a quantized version of the model
     """
-    return _shufflenetv2('shufflenetv2_x0.5', pretrained, progress, quantize,
-                         [4, 8, 4], [24, 48, 96, 192, 1024], **kwargs)
+    return _shufflenetv2(
+        "shufflenetv2_x0.5",
+        pretrained,
+        progress,
+        quantize,
+        [4, 8, 4],
+        [24, 48, 96, 192, 1024],
+        **kwargs
+    )
 
 
 def shufflenet_v2_x1_0(pretrained=False, progress=True, quantize=False, **kwargs):
@@ -124,8 +136,15 @@ def shufflenet_v2_x1_0(pretrained=False, progress=True, quantize=False, **kwargs
         progress (bool): If True, displays a progress bar of the download to stderr
         quantize (bool): If True, return a quantized version of the model
     """
-    return _shufflenetv2('shufflenetv2_x1.0', pretrained, progress, quantize,
-                         [4, 8, 4], [24, 116, 232, 464, 1024], **kwargs)
+    return _shufflenetv2(
+        "shufflenetv2_x1.0",
+        pretrained,
+        progress,
+        quantize,
+        [4, 8, 4],
+        [24, 116, 232, 464, 1024],
+        **kwargs
+    )
 
 
 def shufflenet_v2_x1_5(pretrained=False, progress=True, quantize=False, **kwargs):
@@ -139,8 +158,15 @@ def shufflenet_v2_x1_5(pretrained=False, progress=True, quantize=False, **kwargs
         progress (bool): If True, displays a progress bar of the download to stderr
         quantize (bool): If True, return a quantized version of the model
     """
-    return _shufflenetv2('shufflenetv2_x1.5', pretrained, progress, quantize,
-                         [4, 8, 4], [24, 176, 352, 704, 1024], **kwargs)
+    return _shufflenetv2(
+        "shufflenetv2_x1.5",
+        pretrained,
+        progress,
+        quantize,
+        [4, 8, 4],
+        [24, 176, 352, 704, 1024],
+        **kwargs
+    )
 
 
 def shufflenet_v2_x2_0(pretrained=False, progress=True, quantize=False, **kwargs):
@@ -154,5 +180,12 @@ def shufflenet_v2_x2_0(pretrained=False, progress=True, quantize=False, **kwargs
         progress (bool): If True, displays a progress bar of the download to stderr
         quantize (bool): If True, return a quantized version of the model
     """
-    return _shufflenetv2('shufflenetv2_x2.0', pretrained, progress, quantize,
-                         [4, 8, 4], [24, 244, 488, 976, 2048], **kwargs)
+    return _shufflenetv2(
+        "shufflenetv2_x2.0",
+        pretrained,
+        progress,
+        quantize,
+        [4, 8, 4],
+        [24, 244, 488, 976, 2048],
+        **kwargs
+    )

@@ -5,13 +5,13 @@ from fractions import Fraction
 from typing import List
 
 import torch
+
 from torchvision.io import (
     _probe_video_from_file,
     _read_video_from_file,
     read_video,
     read_video_timestamps,
 )
-
 from .utils import tqdm
 
 
@@ -212,8 +212,10 @@ class VideoClips(object):
         video_pts = video_pts[idxs]
         clips = unfold(video_pts, num_frames, step)
         if not clips.numel():
-            warnings.warn("There aren't enough frames in the current video to get a clip for the given clip length and "
-                          "frames between clips. The video (and potentially others) will be skipped.")
+            warnings.warn(
+                "There aren't enough frames in the current video to get a clip for the given clip length and "
+                "frames between clips. The video (and potentially others) will be skipped."
+            )
         if isinstance(idxs, slice):
             idxs = [idxs] * len(clips)
         else:
