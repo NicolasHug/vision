@@ -77,7 +77,9 @@ class Kitti(VisionDataset):
 
         image_dir = os.path.join(self._raw_folder, self._location, self.image_dir_name)
         if self.train:
-            labels_dir = os.path.join(self._raw_folder, self._location, self.labels_dir_name)
+            labels_dir = os.path.join(
+                self._raw_folder, self._location, self.labels_dir_name
+            )
         for img_file in os.listdir(image_dir):
             self.images.append(os.path.join(image_dir, img_file))
             if self.train:
@@ -115,16 +117,18 @@ class Kitti(VisionDataset):
         with open(self.targets[index]) as inp:
             content = csv.reader(inp, delimiter=" ")
             for line in content:
-                target.append({
-                    "type": line[0],
-                    "truncated": float(line[1]),
-                    "occluded": int(line[2]),
-                    "alpha": float(line[3]),
-                    "bbox": [float(x) for x in line[4:8]],
-                    "dimensions": [float(x) for x in line[8:11]],
-                    "location": [float(x) for x in line[11:14]],
-                    "rotation_y": float(line[14]),
-                })
+                target.append(
+                    {
+                        "type": line[0],
+                        "truncated": float(line[1]),
+                        "occluded": int(line[2]),
+                        "alpha": float(line[3]),
+                        "bbox": [float(x) for x in line[4:8]],
+                        "dimensions": [float(x) for x in line[8:11]],
+                        "location": [float(x) for x in line[11:14]],
+                        "rotation_y": float(line[14]),
+                    }
+                )
         return target
 
     def __len__(self) -> int:

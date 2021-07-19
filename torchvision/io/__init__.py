@@ -11,11 +11,6 @@ from ._video_opt import (
     _read_video_timestamps_from_file,
     _read_video_timestamps_from_memory,
 )
-from .video import (
-    read_video,
-    read_video_timestamps,
-    write_video,
-)
 from .image import (
     ImageReadMode,
     decode_image,
@@ -28,6 +23,11 @@ from .image import (
     write_file,
     write_jpeg,
     write_png,
+)
+from .video import (
+    read_video,
+    read_video_timestamps,
+    write_video,
 )
 
 

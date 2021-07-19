@@ -1,9 +1,10 @@
-from typing import Union, Optional, List, Tuple, Text, BinaryIO
-import pathlib
-import torch
 import math
+import pathlib
 import warnings
+from typing import Union, Optional, List, Tuple, Text, BinaryIO
+
 import numpy as np
+import torch
 from PIL import Image, ImageDraw, ImageFont, ImageColor
 
 __all__ = ["make_grid", "save_image", "draw_bounding_boxes", "draw_segmentation_masks"]
@@ -18,7 +19,7 @@ def make_grid(
     value_range: Optional[Tuple[int, int]] = None,
     scale_each: bool = False,
     pad_value: int = 0,
-    **kwargs
+    **kwargs,
 ) -> torch.Tensor:
     """
     Make a grid of images.
@@ -41,9 +42,11 @@ def make_grid(
     Returns:
         grid (Tensor): the tensor containing grid of images.
     """
-    if not (torch.is_tensor(tensor) or
-            (isinstance(tensor, list) and all(torch.is_tensor(t) for t in tensor))):
-        raise TypeError(f'tensor or list of tensors expected, got {type(tensor)}')
+    if not (
+        torch.is_tensor(tensor)
+        or (isinstance(tensor, list) and all(torch.is_tensor(t) for t in tensor))
+    ):
+        raise TypeError(f"tensor or list of tensors expected, got {type(tensor)}")
 
     if "range" in kwargs.keys():
         warning = "range will be deprecated, please use value_range instead."
@@ -67,8 +70,9 @@ def make_grid(
     if normalize is True:
         tensor = tensor.clone()  # avoid modifying tensor in-place
         if value_range is not None:
-            assert isinstance(value_range, tuple), \
-                "value_range has to be a tuple (min, max) if specified. min and max are numbers"
+            assert isinstance(
+                value_range, tuple
+            ), "value_range has to be a tuple (min, max) if specified. min and max are numbers"
 
         def norm_ip(img, low, high):
             img.clamp_(min=low, max=high)
@@ -95,7 +99,9 @@ def make_grid(
     ymaps = int(math.ceil(float(nmaps) / xmaps))
     height, width = int(tensor.size(2) + padding), int(tensor.size(3) + padding)
     num_channels = tensor.size(1)
-    grid = tensor.new_full((num_channels, height * ymaps + padding, width * xmaps + padding), pad_value)
+    grid = tensor.new_full(
+        (num_channels, height * ymaps + padding, width * xmaps + padding), pad_value
+    )
     k = 0
     for y in range(ymaps):
         for x in range(xmaps):
@@ -105,7 +111,9 @@ def make_grid(
             # https://pytorch.org/docs/stable/tensors.html#torch.Tensor.copy_
             grid.narrow(1, y * height + padding, height - padding).narrow(  # type: ignore[attr-defined]
                 2, x * width + padding, width - padding
-            ).copy_(tensor[k])
+            ).copy_(
+                tensor[k]
+            )
             k = k + 1
     return grid
 
@@ -115,7 +123,7 @@ def save_image(
     tensor: Union[torch.Tensor, List[torch.Tensor]],
     fp: Union[Text, pathlib.Path, BinaryIO],
     format: Optional[str] = None,
-    **kwargs
+    **kwargs,
 ) -> None:
     """
     Save a given Tensor into an image file.
@@ -131,7 +139,14 @@ def save_image(
 
     grid = make_grid(tensor, **kwargs)
     # Add 0.5 after unnormalizing to [0, 255] to round to nearest integer
-    ndarr = grid.mul(255).add_(0.5).clamp_(0, 255).permute(1, 2, 0).to('cpu', torch.uint8).numpy()
+    ndarr = (
+        grid.mul(255)
+        .add_(0.5)
+        .clamp_(0, 255)
+        .permute(1, 2, 0)
+        .to("cpu", torch.uint8)
+        .numpy()
+    )
     im = Image.fromarray(ndarr)
     im.save(fp, format=format)
 
@@ -141,11 +156,13 @@ def draw_bounding_boxes(
     image: torch.Tensor,
     boxes: torch.Tensor,
     labels: Optional[List[str]] = None,
-    colors: Optional[Union[List[Union[str, Tuple[int, int, int]]], str, Tuple[int, int, int]]] = None,
+    colors: Optional[
+        Union[List[Union[str, Tuple[int, int, int]]], str, Tuple[int, int, int]]
+    ] = None,
     fill: Optional[bool] = False,
     width: int = 1,
     font: Optional[str] = None,
-    font_size: int = 10
+    font_size: int = 10,
 ) -> torch.Tensor:
 
     """
@@ -196,7 +213,11 @@ def draw_bounding_boxes(
     else:
         draw = ImageDraw.Draw(img_to_draw)
 
-    txt_font = ImageFont.load_default() if font is None else ImageFont.truetype(font=font, size=font_size)
+    txt_font = (
+        ImageFont.load_default()
+        if font is None
+        else ImageFont.truetype(font=font, size=font_size)
+    )
 
     for i, bbox in enumerate(img_boxes):
         if colors is None:
@@ -220,9 +241,16 @@ def draw_bounding_boxes(
 
         if labels is not None:
             margin = width + 1
-            draw.text((bbox[0] + margin, bbox[1] + margin), labels[i], fill=color, font=txt_font)
+            draw.text(
+                (bbox[0] + margin, bbox[1] + margin),
+                labels[i],
+                fill=color,
+                font=txt_font,
+            )
 
-    return torch.from_numpy(np.array(img_to_draw)).permute(2, 0, 1).to(dtype=torch.uint8)
+    return (
+        torch.from_numpy(np.array(img_to_draw)).permute(2, 0, 1).to(dtype=torch.uint8)
+    )
 
 
 @torch.no_grad()
@@ -270,7 +298,9 @@ def draw_segmentation_masks(
 
     num_masks = masks.size()[0]
     if colors is not None and num_masks > len(colors):
-        raise ValueError(f"There are more masks ({num_masks}) than colors ({len(colors)})")
+        raise ValueError(
+            f"There are more masks ({num_masks}) than colors ({len(colors)})"
+        )
 
     if colors is None:
         colors = _generate_color_palette(num_masks)
@@ -280,7 +310,9 @@ def draw_segmentation_masks(
     if not isinstance(colors[0], (tuple, str)):
         raise ValueError("colors must be a tuple or a string, or a list thereof")
     if isinstance(colors[0], tuple) and len(colors[0]) != 3:
-        raise ValueError("It seems that you passed a tuple of colors instead of a list of colors")
+        raise ValueError(
+            "It seems that you passed a tuple of colors instead of a list of colors"
+        )
 
     out_dtype = torch.uint8
 

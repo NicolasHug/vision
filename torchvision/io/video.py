@@ -94,16 +94,16 @@ def write_video(
 
         if audio_array is not None:
             audio_format_dtypes = {
-                'dbl': '<f8',
-                'dblp': '<f8',
-                'flt': '<f4',
-                'fltp': '<f4',
-                's16': '<i2',
-                's16p': '<i2',
-                's32': '<i4',
-                's32p': '<i4',
-                'u8': 'u1',
-                'u8p': 'u1',
+                "dbl": "<f8",
+                "dblp": "<f8",
+                "flt": "<f4",
+                "fltp": "<f4",
+                "s16": "<i2",
+                "s16p": "<i2",
+                "s32": "<i4",
+                "s32p": "<i4",
+                "u8": "u1",
+                "u8p": "u1",
             }
             a_stream = container.add_stream(audio_codec, rate=audio_fps)
             a_stream.options = audio_options or {}
@@ -222,7 +222,10 @@ def _read_from_stream(
 
 
 def _align_audio_frames(
-    aframes: torch.Tensor, audio_frames: List["av.frame.Frame"], ref_start: int, ref_end: float
+    aframes: torch.Tensor,
+    audio_frames: List["av.frame.Frame"],
+    ref_start: int,
+    ref_end: float,
 ) -> torch.Tensor:
     start, end = audio_frames[0].pts, audio_frames[-1].pts
     total_aframes = aframes.shape[1]
@@ -264,7 +267,7 @@ def read_video(
     from torchvision import get_video_backend
 
     if not os.path.exists(filename):
-        raise RuntimeError(f'File not found: {filename}')
+        raise RuntimeError(f"File not found: {filename}")
 
     if get_video_backend() != "pyav":
         return _video_opt._read_video(filename, start_pts, end_pts, pts_unit)
@@ -293,7 +296,8 @@ def read_video(
                 time_base = container.streams.audio[0].time_base
             # video_timebase is the default time_base
             start_pts_sec, end_pts_sec, pts_unit = _video_opt._convert_to_sec(
-                start_pts, end_pts, pts_unit, time_base)
+                start_pts, end_pts, pts_unit, time_base
+            )
             if container.streams.video:
                 video_frames = _read_from_stream(
                     container,
@@ -358,7 +362,9 @@ def _decode_video_timestamps(container: "av.container.Container") -> List[int]:
         return [x.pts for x in container.decode(video=0) if x.pts is not None]
 
 
-def read_video_timestamps(filename: str, pts_unit: str = "pts") -> Tuple[List[int], Optional[float]]:
+def read_video_timestamps(
+    filename: str, pts_unit: str = "pts"
+) -> Tuple[List[int], Optional[float]]:
     """
     List the video frames timestamps.
 
