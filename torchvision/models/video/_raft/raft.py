@@ -325,13 +325,17 @@ class RAFT(nn.Module):
 
         image1 = image1.contiguous()
         image2 = image2.contiguous()
+        print(image1.shape, image2.shape)
 
         # run the feature network
         fmap1, fmap2 = self.fnet([image1, image2])
 
         fmap1 = fmap1.float()
         fmap2 = fmap2.float()
+        print('in corrblock')
         corr_fn = CorrBlock(fmap1, fmap2, radius=self.corr_radius)
+        print('out of corrbloack')
+        print(fmap1.shape)
 
         # run the context network
         cnet = self.cnet(image1)
@@ -346,8 +350,11 @@ class RAFT(nn.Module):
 
         flow_predictions = []
         for itr in range(iters):
+            print("update itr", itr)
             coords1 = coords1.detach()
+            print("before corr_fn")
             corr = corr_fn(coords1)  # index correlation volume
+            print("after corr_fn")
 
             flow = coords1 - coords0
             net, up_mask, delta_flow = self.update_block(net, inp, corr, flow)
