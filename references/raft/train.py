@@ -4,118 +4,14 @@ import os
 import os.path as osp
 
 import torch
+from torch.utils.tensorboard import SummaryWriter
 from torch.cuda.amp import GradScaler
 import numpy as np
 from PIL import Image
 import cv2
 
 from torchvision.models.video import RAFT
-from torchvision.models.video._raft.utils import SparseFlowAugmentor
-
-
-class KittiFlowDataset(torch.utils.data.Dataset):
-    def __init__(
-        self,
-        root='/Users/nicolashug/Downloads/data_scene_flow/',  # TODO: obviously change that
-        split='training',
-    ):
-
-        # self.is_test = False
-        # self.init_seed = False
-        self.flow_list = []
-        self.image_list = []
-        self.extra_info = []
-
-        # if split == 'testing':
-        #     self.is_test = True
-
-        root = osp.join(root, split)
-        images1 = sorted(glob(osp.join(root, 'image_2/*_10.png')))  # TODO os sep
-        images2 = sorted(glob(osp.join(root, 'image_2/*_11.png')))
-
-        for img1, img2 in zip(images1, images2):
-            frame_id = img1.split('/')[-1]  # TODO os sep
-            self.extra_info += [[frame_id]]
-            self.image_list += [[img1, img2]]
-
-        if split == 'training':
-            self.flow_list = sorted(glob(osp.join(root, 'flow_occ/*_10.png')))
-        
-        # Note: for non-kitti, use a non sparse augmentor
-        self.augmentor = SparseFlowAugmentor(crop_size=(288, 960))
-
-    def __getitem__(self, index):
-
-        # if self.is_test:
-        #     img1 = frame_utils.read_gen(self.image_list[index][0])
-        #     img2 = frame_utils.read_gen(self.image_list[index][1])
-        #     img1 = np.array(img1).astype(np.uint8)[..., :3]
-        #     img2 = np.array(img2).astype(np.uint8)[..., :3]
-        #     img1 = torch.from_numpy(img1).permute(2, 0, 1).float()
-        #     img2 = torch.from_numpy(img2).permute(2, 0, 1).float()
-        #     return img1, img2, self.extra_info[index]
-
-        # if not self.init_seed:
-        #     worker_info = torch.utils.data.get_worker_info()
-        #     if worker_info is not None:
-        #         torch.manual_seed(worker_info.id)
-        #         np.random.seed(worker_info.id)
-        #         random.seed(worker_info.id)
-        #         self.init_seed = True
-
-        index = index % len(self.image_list)
-
-        # valid = None
-        # if self.sparse:
-        # Note: See README of "development kit" archive of kitti
-        flow = cv2.imread(self.flow_list[index], cv2.IMREAD_ANYDEPTH | cv2.IMREAD_COLOR)
-        flow = flow[:,:,::-1].astype(np.float32)
-        flow, valid = flow[:, :, :2], flow[:, :, 2]
-        flow = (flow - 2**15) / 64.0
-        # else:
-        #     flow = Image.open(self.flow_list[index])
-
-        # Note: can't use read_image, they're 16bits pngs for Kitti
-        img1 = Image.open(self.image_list[index][0])
-        img2 = Image.open(self.image_list[index][1])
-
-        flow = np.array(flow).astype(np.float32)
-        img1 = np.array(img1).astype(np.uint8)
-        img2 = np.array(img2).astype(np.uint8)
-
-        # grayscale images
-        if len(img1.shape) == 2:
-            img1 = np.tile(img1[...,None], (1, 1, 3))
-            img2 = np.tile(img2[...,None], (1, 1, 3))
-        else:
-            img1 = img1[..., :3]
-            img2 = img2[..., :3]
-
-        img1, img2, flow, valid = self.augmentor(img1, img2, flow, valid)
-
-        img1 = torch.from_numpy(img1).permute(2, 0, 1).float()
-        img2 = torch.from_numpy(img2).permute(2, 0, 1).float()
-        flow = torch.from_numpy(flow).permute(2, 0, 1).float()
-
-        if valid is not None:
-            # Always True for now
-            valid = torch.from_numpy(valid)
-        # else:
-        #     valid = (flow[0].abs() < 1000) & (flow[1].abs() < 1000)
-
-        # padder = InputPadder(img1.shape, mode='kitti')
-        # # img1, img2, flow = padder.pad(img1[None], img2[None], flow[None])
-        # img1, img2, flow = padder.pad(img1, img2, flow)
-
-        return img1, img2, flow, valid.float()
-
-    # def __rmul__(self, v):
-    #     self.flow_list = v * self.flow_list
-    #     self.image_list = v * self.image_list
-    #     return self
-
-    def __len__(self):
-        return len(self.image_list)
+from torchvision.models.video._raft.utils import KittiFlowDataset
 
 
 MAX_FLOW = 400
@@ -140,6 +36,7 @@ def sequence_loss(flow_preds, flow_gt, valid, gamma=0.8, max_flow=MAX_FLOW):
     epe = epe.view(-1)[valid.view(-1)]
 
     metrics = {
+        'flow_loss': flow_loss,
         'epe': epe.mean().item(),
         '1px': (epe < 1).float().mean().item(),
         '3px': (epe < 3).float().mean().item(),
@@ -149,16 +46,73 @@ def sequence_loss(flow_preds, flow_gt, valid, gamma=0.8, max_flow=MAX_FLOW):
     return flow_loss, metrics
 
 
+SUM_FREQ = 50
+class Logger:
+    def __init__(self, model, scheduler):
+        self.model = model
+        self.scheduler = scheduler
+        self.total_steps = 0
+        self.running_loss = {}  # TODO: could be a defaultdict(int)
+        self.writer = None
+
+    def _print_training_status(self):
+        training_str = "[{:6d}, {:10.7f}] ".format(self.total_steps+1, self.scheduler.get_last_lr()[0])
+        metrics_str = ""
+        for metric, val in self.running_loss.items():
+            avg_val = val / SUM_FREQ
+            metrics_str += f"{metric}: {avg_val:10.4f}, "
+        
+        # print the training status
+        print(training_str + metrics_str)
+
+        if self.writer is None:
+            self.writer = SummaryWriter()
+
+        for k in self.running_loss:
+            self.writer.add_scalar(k, self.running_loss[k]/SUM_FREQ, self.total_steps)
+            self.running_loss[k] = 0.0
+
+    def push(self, metrics):
+        self.total_steps += 1
+
+        for key in metrics:
+            if key not in self.running_loss:
+                self.running_loss[key] = 0.0
+
+            self.running_loss[key] += metrics[key]
+
+        if self.total_steps % SUM_FREQ == SUM_FREQ-1:
+            self._print_training_status()
+            self.running_loss = {}
+
+    def write_dict(self, results):
+        if self.writer is None:
+            self.writer = SummaryWriter()
+
+        for key in results:
+            self.writer.add_scalar(key, results[key], self.total_steps)
+
+    def close(self):
+        self.writer.close()
+
+
 def train(args):
 
-    # model = nn.DataParallel(RAFT(args), device_ids=args.gpus)
+    print(f"{torch.cuda.device_count()} cuda devices available")
+    cuda_available = torch.cuda.is_available()
+
+    model = RAFT()  # TODO: pass args
+
+    # TODO: use DistributedDataParallel instead
+    # if cuda_available:
+    #     model = torch.nn.DataParallel(model)
     # print("Parameter Count: %d" % count_parameters(model))
-    model = RAFT()
 
     # if args.restore_ckpt is not None:
     #     model.load_state_dict(torch.load(args.restore_ckpt), strict=False)
 
-    # model.cuda()
+    if cuda_available:
+        model.cuda()
     model.train()
 
     # if args.stage != 'chairs':
@@ -167,7 +121,7 @@ def train(args):
     # train_loader = datasets.fetch_dataloader(args)
     # optimizer, scheduler = fetch_optimizer(args, model)
 
-    train_dataset = KittiFlowDataset()
+    train_dataset = KittiFlowDataset(root="/data/home/nicolashug/cluster/work/kitti/s3.eu-central-1.amazonaws.com/avg-kitti")
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, 
         pin_memory=False, shuffle=True, num_workers=4, drop_last=True)
@@ -181,27 +135,29 @@ def train(args):
     total_steps = 0
     # TODO: only use GradSclaer if cuda is available
     scaler = GradScaler(enabled=args.mixed_precision)
-    # logger = Logger(model, scheduler)
+    logger = Logger(model, scheduler)
 
-    # VAL_FREQ = 5000
+    VAL_FREQ = 5000
 
     should_keep_training = True
     while should_keep_training:
 
         for i_batch, data_blob in enumerate(train_loader):
-            print(f"{i_batch = }")
+            # print(f"{i_batch = }")
             optimizer.zero_grad()
-            # image1, image2, flow, valid = [x.cuda() for x in data_blob]
-            image1, image2, flow, valid = data_blob
+            if cuda_available:
+                image1, image2, flow, valid = [x.cuda() for x in data_blob]
+            else:
+                image1, image2, flow, valid = data_blob
 
             if args.add_noise:
                 stdv = np.random.uniform(0.0, 5.0)
                 image1 = (image1 + stdv * torch.randn(*image1.shape).cuda()).clamp(0.0, 255.0)
                 image2 = (image2 + stdv * torch.randn(*image2.shape).cuda()).clamp(0.0, 255.0)
 
-            print("before forward")
+            # print("before forward")
             flow_predictions = model(image1, image2, iters=args.iters)
-            print("done")
+            # print("done")
 
             loss, metrics = sequence_loss(flow_predictions, flow, valid, args.gamma)
             scaler.scale(loss).backward()
@@ -212,31 +168,30 @@ def train(args):
             scheduler.step()
             scaler.update()
 
-            # logger.push(metrics)
+            logger.push(metrics)
 
-            # if total_steps % VAL_FREQ == VAL_FREQ - 1:
-            #     PATH = 'checkpoints/%d_%s.pth' % (total_steps+1, args.name)
-            #     torch.save(model.state_dict(), PATH)
+            if total_steps % VAL_FREQ == VAL_FREQ - 1:
+                PATH = 'checkpoints/%d_%s.pth' % (total_steps+1, args.name)
+                torch.save(model.state_dict(), PATH)
 
-            #     results = {}
-            #     for val_dataset in args.validation:
-            #         if val_dataset == 'chairs':
-            #             results.update(evaluate.validate_chairs(model.module))
-            #         elif val_dataset == 'sintel':
-            #             results.update(evaluate.validate_sintel(model.module))
-            #         elif val_dataset == 'kitti':
-            #             results.update(evaluate.validate_kitti(model.module))
+                # results = {}
+                # for val_dataset in args.validation:
+                #     if val_dataset == 'chairs':
+                #         results.update(evaluate.validate_chairs(model.module))
+                #     elif val_dataset == 'sintel':
+                #         results.update(evaluate.validate_sintel(model.module))
+                #     elif val_dataset == 'kitti':
+                #         results.update(evaluate.validate_kitti(model.module))
 
-            #     logger.write_dict(results)
-
-            #     model.train()
-            #     if args.stage != 'chairs':
-            #         model.module.freeze_bn()
+                # logger.write_dict(results)
+                # model.train()
+                # if args.stage != 'chairs':
+                #     model.module.freeze_bn()
 
             total_steps += 1
 
             if total_steps > args.num_steps:
-                print("BREAKING")
+                print("BREAKING OUT OF TRAINING LOOP")
                 should_keep_training = False
                 break
 

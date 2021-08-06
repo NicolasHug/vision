@@ -10,30 +10,30 @@ from ....transforms import ColorJitter
 
 
 # TODO: need competely rewrite the following funs
-# class InputPadder:
-#     """Pads images such that dimensions are divisible by 8"""
+class InputPadder:
+    """Pads images such that dimensions are divisible by 8"""
 
-#     def __init__(self, dims, mode="sintel"):
-#         self.ht, self.wd = dims[-2:]
-#         pad_ht = (((self.ht // 8) + 1) * 8 - self.ht) % 8
-#         pad_wd = (((self.wd // 8) + 1) * 8 - self.wd) % 8
-#         if mode == "sintel":
-#             self._pad = [
-#                 pad_wd // 2,
-#                 pad_wd - pad_wd // 2,
-#                 pad_ht // 2,
-#                 pad_ht - pad_ht // 2,
-#             ]
-#         else:
-#             self._pad = [pad_wd // 2, pad_wd - pad_wd // 2, 0, pad_ht]
+    def __init__(self, dims, mode="sintel"):
+        self.ht, self.wd = dims[-2:]
+        pad_ht = (((self.ht // 8) + 1) * 8 - self.ht) % 8
+        pad_wd = (((self.wd // 8) + 1) * 8 - self.wd) % 8
+        if mode == "sintel":
+            self._pad = [
+                pad_wd // 2,
+                pad_wd - pad_wd // 2,
+                pad_ht // 2,
+                pad_ht - pad_ht // 2,
+            ]
+        else:
+            self._pad = [pad_wd // 2, pad_wd - pad_wd // 2, 0, pad_ht]
 
-#     def pad(self, *inputs):
-#         return [F.pad(x, self._pad, mode="replicate") for x in inputs]
+    def pad(self, *inputs):
+        return [F.pad(x, self._pad, mode="replicate") for x in inputs]
 
-#     def unpad(self, x):
-#         ht, wd = x.shape[-2:]
-#         c = [self._pad[2], ht - self._pad[3], self._pad[0], wd - self._pad[1]]
-#         return x[..., c[0] : c[1], c[2] : c[3]]
+    def unpad(self, x):
+        ht, wd = x.shape[-2:]
+        c = [self._pad[2], ht - self._pad[3], self._pad[0], wd - self._pad[1]]
+        return x[..., c[0] : c[1], c[2] : c[3]]
 
 
 def forward_interpolate(flow):
@@ -234,3 +234,108 @@ class SparseFlowAugmentor:
         valid = np.ascontiguousarray(valid)
 
         return img1, img2, flow, valid
+
+
+class KittiFlowDataset(torch.utils.data.Dataset):
+    def __init__(
+        self,
+        root='/Users/nicolashug/Downloads/data_scene_flow/',  # TODO: obviously change that
+        split='training',
+    ):
+
+        # self.is_test = False
+        # self.init_seed = False
+        self.flow_list = []
+        self.image_list = []
+        self.extra_info = []
+
+        # if split == 'testing':
+        #     self.is_test = True
+
+        root = osp.join(root, split)
+        images1 = sorted(glob(osp.join(root, 'image_2/*_10.png')))  # TODO os sep
+        images2 = sorted(glob(osp.join(root, 'image_2/*_11.png')))
+
+        for img1, img2 in zip(images1, images2):
+            frame_id = img1.split('/')[-1]  # TODO os sep
+            self.extra_info += [[frame_id]]
+            self.image_list += [[img1, img2]]
+
+        if split == 'training':
+            self.flow_list = sorted(glob(osp.join(root, 'flow_occ/*_10.png')))
+        
+        # Note: for non-kitti, use a non sparse augmentor
+        self.augmentor = SparseFlowAugmentor(crop_size=(288, 960))
+
+    def __getitem__(self, index):
+
+        # if self.is_test:
+        #     img1 = frame_utils.read_gen(self.image_list[index][0])
+        #     img2 = frame_utils.read_gen(self.image_list[index][1])
+        #     img1 = np.array(img1).astype(np.uint8)[..., :3]
+        #     img2 = np.array(img2).astype(np.uint8)[..., :3]
+        #     img1 = torch.from_numpy(img1).permute(2, 0, 1).float()
+        #     img2 = torch.from_numpy(img2).permute(2, 0, 1).float()
+        #     return img1, img2, self.extra_info[index]
+
+        # if not self.init_seed:
+        #     worker_info = torch.utils.data.get_worker_info()
+        #     if worker_info is not None:
+        #         torch.manual_seed(worker_info.id)
+        #         np.random.seed(worker_info.id)
+        #         random.seed(worker_info.id)
+        #         self.init_seed = True
+
+        index = index % len(self.image_list)
+
+        # valid = None
+        # if self.sparse:
+        # Note: See README of "development kit" archive of kitti
+        flow = cv2.imread(self.flow_list[index], cv2.IMREAD_ANYDEPTH | cv2.IMREAD_COLOR)
+        flow = flow[:,:,::-1].astype(np.float32)
+        flow, valid = flow[:, :, :2], flow[:, :, 2]
+        flow = (flow - 2**15) / 64.0
+        # else:
+        #     flow = Image.open(self.flow_list[index])
+
+        # Note: can't use read_image, they're 16bits pngs for Kitti
+        img1 = Image.open(self.image_list[index][0])
+        img2 = Image.open(self.image_list[index][1])
+
+        flow = np.array(flow).astype(np.float32)
+        img1 = np.array(img1).astype(np.uint8)
+        img2 = np.array(img2).astype(np.uint8)
+
+        # grayscale images
+        if len(img1.shape) == 2:
+            img1 = np.tile(img1[...,None], (1, 1, 3))
+            img2 = np.tile(img2[...,None], (1, 1, 3))
+        else:
+            img1 = img1[..., :3]
+            img2 = img2[..., :3]
+
+        img1, img2, flow, valid = self.augmentor(img1, img2, flow, valid)
+
+        img1 = torch.from_numpy(img1).permute(2, 0, 1).float()
+        img2 = torch.from_numpy(img2).permute(2, 0, 1).float()
+        flow = torch.from_numpy(flow).permute(2, 0, 1).float()
+
+        if valid is not None:
+            # Always True for now
+            valid = torch.from_numpy(valid)
+        # else:
+        #     valid = (flow[0].abs() < 1000) & (flow[1].abs() < 1000)
+
+        # padder = InputPadder(img1.shape, mode='kitti')
+        # # img1, img2, flow = padder.pad(img1[None], img2[None], flow[None])
+        # img1, img2, flow = padder.pad(img1, img2, flow)
+
+        return img1, img2, flow, valid.float()
+
+    # def __rmul__(self, v):
+    #     self.flow_list = v * self.flow_list
+    #     self.image_list = v * self.image_list
+    #     return self
+
+    def __len__(self):
+        return len(self.image_list)
