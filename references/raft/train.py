@@ -7,9 +7,10 @@ import torch
 from torch.cuda.amp import GradScaler
 import numpy as np
 from PIL import Image
+import cv2
 
 from torchvision.models.video import RAFT
-from torchvision.models.video._raft.utils import InputPadder
+from torchvision.models.video._raft.utils import SparseFlowAugmentor
 
 
 class KittiFlowDataset(torch.utils.data.Dataset):
@@ -39,6 +40,9 @@ class KittiFlowDataset(torch.utils.data.Dataset):
 
         if split == 'training':
             self.flow_list = sorted(glob(osp.join(root, 'flow_occ/*_10.png')))
+        
+        # Note: for non-kitti, use a non sparse augmentor
+        self.augmentor = SparseFlowAugmentor(crop_size=(288, 960))
 
     def __getitem__(self, index):
 
@@ -60,14 +64,18 @@ class KittiFlowDataset(torch.utils.data.Dataset):
         #         self.init_seed = True
 
         index = index % len(self.image_list)
+
         # valid = None
         # if self.sparse:
-        #     flow, valid = frame_utils.readFlowKITTI(self.flow_list[index])
+        # Note: See README of "development kit" archive of kitti
+        flow = cv2.imread(self.flow_list[index], cv2.IMREAD_ANYDEPTH | cv2.IMREAD_COLOR)
+        flow = flow[:,:,::-1].astype(np.float32)
+        flow, valid = flow[:, :, :2], flow[:, :, 2]
+        flow = (flow - 2**15) / 64.0
         # else:
+        #     flow = Image.open(self.flow_list[index])
 
-        # Can't use read_image, they're 16bits pngs
-        flow = Image.open(self.flow_list[index])
-
+        # Note: can't use read_image, they're 16bits pngs for Kitti
         img1 = Image.open(self.image_list[index][0])
         img2 = Image.open(self.image_list[index][1])
 
@@ -83,20 +91,17 @@ class KittiFlowDataset(torch.utils.data.Dataset):
             img1 = img1[..., :3]
             img2 = img2[..., :3]
 
-        # if self.augmentor is not None:
-        #     if self.sparse:
-        #         img1, img2, flow, valid = self.augmentor(img1, img2, flow, valid)
-        #     else:
-        #         img1, img2, flow = self.augmentor(img1, img2, flow)
+        img1, img2, flow, valid = self.augmentor(img1, img2, flow, valid)
 
         img1 = torch.from_numpy(img1).permute(2, 0, 1).float()
         img2 = torch.from_numpy(img2).permute(2, 0, 1).float()
         flow = torch.from_numpy(flow).permute(2, 0, 1).float()
 
-        # if valid is not None:
-        #     valid = torch.from_numpy(valid)
+        if valid is not None:
+            # Always True for now
+            valid = torch.from_numpy(valid)
         # else:
-        valid = (flow[0].abs() < 1000) & (flow[1].abs() < 1000)
+        #     valid = (flow[0].abs() < 1000) & (flow[1].abs() < 1000)
 
         # padder = InputPadder(img1.shape, mode='kitti')
         # # img1, img2, flow = padder.pad(img1[None], img2[None], flow[None])
@@ -184,7 +189,7 @@ def train(args):
     while should_keep_training:
 
         for i_batch, data_blob in enumerate(train_loader):
-            print(i_batch)
+            print(f"{i_batch = }")
             optimizer.zero_grad()
             # image1, image2, flow, valid = [x.cuda() for x in data_blob]
             image1, image2, flow, valid = data_blob
@@ -231,6 +236,7 @@ def train(args):
             total_steps += 1
 
             if total_steps > args.num_steps:
+                print("BREAKING")
                 should_keep_training = False
                 break
 
