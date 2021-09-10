@@ -1,5 +1,4 @@
 import argparse
-from glob import glob
 import os
 import os.path as osp
 
@@ -7,11 +6,9 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from torch.cuda.amp import GradScaler
 import numpy as np
-from PIL import Image
-import cv2
 
 from torchvision.models.video import RAFT
-from torchvision.models.video._raft.utils import KittiFlowDataset
+from torchvision.models.video._raft.utils import KittiFlowDataset, FlyingChairs, FlyingThings3D, Sintel
 
 
 MAX_FLOW = 400
@@ -95,33 +92,41 @@ class Logger:
     def close(self):
         self.writer.close()
 
+def setup_ddp(rank, world_size):
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
 
-def train(args):
+    # initialize the process group
+    torch.distributed.init_process_group(backend="nccl", rank=rank, world_size=world_size)
 
-    print(f"{torch.cuda.device_count()} cuda devices available")
+def train(rank, world_size, args):
+
+    # TODO: this is assumed to be true
     cuda_available = torch.cuda.is_available()
 
-    model = RAFT()  # TODO: pass args
-
-    # TODO: use DistributedDataParallel instead
-    # if cuda_available:
-    #     model = torch.nn.DataParallel(model)
+    setup_ddp(rank, world_size)
+    model = RAFT().to(rank)  # TODO: pass args
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[rank])
     # print("Parameter Count: %d" % count_parameters(model))
 
     # if args.restore_ckpt is not None:
     #     model.load_state_dict(torch.load(args.restore_ckpt), strict=False)
 
-    if cuda_available:
-        model.cuda()
     model.train()
 
+    # TODO: This looks important
     # if args.stage != 'chairs':
     #     model.module.freeze_bn()
 
     # train_loader = datasets.fetch_dataloader(args)
     # optimizer, scheduler = fetch_optimizer(args, model)
 
-    train_dataset = KittiFlowDataset(root="/data/home/nicolashug/cluster/work/kitti/s3.eu-central-1.amazonaws.com/avg-kitti")
+    train_dataset = KittiFlowDataset()  # Seems OK
+    # train_dataset = FlyingChairs()  # Seems OK
+    # train_dataset = FlyingThings3D()  # TODO: Re-download to check. Need BitTorrent tho...
+    # Note: not sure why but they concatenate the other datasets to Sintel in the training script
+    # train_dataset = 100 * Sintel(dstype='clean') + 100 * Sintel(dstype='final')  # OKish, loss not really decreasing?
+
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, 
         pin_memory=False, shuffle=True, num_workers=4, drop_last=True)
@@ -146,7 +151,7 @@ def train(args):
             # print(f"{i_batch = }")
             optimizer.zero_grad()
             if cuda_available:
-                image1, image2, flow, valid = [x.cuda() for x in data_blob]
+                image1, image2, flow, valid = [x.to(rank) for x in data_blob]
             else:
                 image1, image2, flow, valid = data_blob
 
@@ -231,5 +236,14 @@ if __name__ == '__main__':
 
     if not osp.isdir('checkpoints'):
         os.mkdir('checkpoints')
+    
+    n_gpus = torch.cuda.device_count()
+    print(f"{n_gpus} cuda devices available")
+    assert n_gpus >= 2, f"Requires at least 2 GPUs to run, but got {n_gpus}"
+    world_size = n_gpus
+    torch.multiprocessing.spawn(train,
+             args=(world_size, args),
+             nprocs=world_size,
+             join=True)
 
-    train(args)
+    # train(args)
