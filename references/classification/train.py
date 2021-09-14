@@ -17,7 +17,8 @@ except ImportError:
     amp = None
 
 
-def train_one_epoch(model, criterion, optimizer, data_loader, device, epoch, print_freq, apex=False):
+def train_one_epoch(model, criterion, optimizer, data_loader, device, epoch,
+                    print_freq, apex=False, model_ema=None):
     model.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value}'))
@@ -45,11 +46,14 @@ def train_one_epoch(model, criterion, optimizer, data_loader, device, epoch, pri
         metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
         metric_logger.meters['img/s'].update(batch_size / (time.time() - start_time))
 
+    if model_ema:
+        model_ema.update_parameters(model)
 
-def evaluate(model, criterion, data_loader, device, print_freq=100):
+
+def evaluate(model, criterion, data_loader, device, print_freq=100, log_suffix=''):
     model.eval()
     metric_logger = utils.MetricLogger(delimiter="  ")
-    header = 'Test:'
+    header = f'Test: {log_suffix}'
     with torch.no_grad():
         for image, target in metric_logger.log_every(data_loader, print_freq, header):
             image = image.to(device, non_blocking=True)
@@ -67,8 +71,7 @@ def evaluate(model, criterion, data_loader, device, print_freq=100):
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
 
-    print(' * Acc@1 {top1.global_avg:.3f} Acc@5 {top5.global_avg:.3f}'
-          .format(top1=metric_logger.acc1, top5=metric_logger.acc5))
+    print(f'{header} Acc@1 {metric_logger.acc1.global_avg:.3f} Acc@5 {metric_logger.acc5.global_avg:.3f}')
     return metric_logger.acc1.global_avg
 
 
@@ -199,12 +202,18 @@ def main(args):
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
         model_without_ddp = model.module
 
+    model_ema = None
+    if args.model_ema:
+        model_ema = utils.ExponentialMovingAverage(model_without_ddp, device=device, decay=args.model_ema_decay)
+
     if args.resume:
         checkpoint = torch.load(args.resume, map_location='cpu')
         model_without_ddp.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
         lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
         args.start_epoch = checkpoint['epoch'] + 1
+        if model_ema:
+            model_ema.load_state_dict(checkpoint['model_ema'])
 
     if args.test_only:
         evaluate(model, criterion, data_loader_test, device=device)
@@ -215,9 +224,11 @@ def main(args):
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
-        train_one_epoch(model, criterion, optimizer, data_loader, device, epoch, args.print_freq, args.apex)
+        train_one_epoch(model, criterion, optimizer, data_loader, device, epoch, args.print_freq, args.apex, model_ema)
         lr_scheduler.step()
         evaluate(model, criterion, data_loader_test, device=device)
+        if model_ema:
+            evaluate(model_ema, criterion, data_loader_test, device=device, log_suffix='EMA')
         if args.output_dir:
             checkpoint = {
                 'model': model_without_ddp.state_dict(),
@@ -225,6 +236,8 @@ def main(args):
                 'lr_scheduler': lr_scheduler.state_dict(),
                 'epoch': epoch,
                 'args': args}
+            if model_ema:
+                checkpoint['model_ema'] = model_ema.state_dict()
             utils.save_on_master(
                 checkpoint,
                 os.path.join(args.output_dir, 'model_{}.pth'.format(epoch)))
@@ -306,6 +319,12 @@ def get_args_parser(add_help=True):
     parser.add_argument('--world-size', default=1, type=int,
                         help='number of distributed processes')
     parser.add_argument('--dist-url', default='env://', help='url used to set up distributed training')
+    parser.add_argument(
+        '--model-ema', action='store_true',
+        help='enable tracking Exponential Moving Average of model parameters')
+    parser.add_argument(
+        '--model-ema-decay', type=float, default=0.9,
+        help='decay factor for Exponential Moving Average of model parameters(default: 0.9)')
 
     return parser
 
