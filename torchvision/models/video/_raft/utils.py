@@ -9,8 +9,29 @@ import torch.nn.functional as F
 from scipy import interpolate
 from PIL import Image
 import cv2
+import random
 
 from ....transforms import ColorJitter
+
+
+class InputPadder:
+    """ Pads images such that dimensions are divisible by 8 """
+    def __init__(self, dims, mode='sintel'):
+        self.ht, self.wd = dims[-2:]
+        pad_ht = (((self.ht // 8) + 1) * 8 - self.ht) % 8
+        pad_wd = (((self.wd // 8) + 1) * 8 - self.wd) % 8
+        if mode == 'sintel':
+            self._pad = [pad_wd//2, pad_wd - pad_wd//2, pad_ht//2, pad_ht - pad_ht//2]
+        else:
+            self._pad = [pad_wd//2, pad_wd - pad_wd//2, 0, pad_ht]
+
+    def pad(self, *inputs):
+        return [F.pad(x, self._pad, mode='replicate') for x in inputs]
+
+    def unpad(self,x):
+        ht, wd = x.shape[-2:]
+        c = [self._pad[2], ht-self._pad[3], self._pad[0], wd-self._pad[1]]
+        return x[..., c[0]:c[1], c[2]:c[3]]
 
 
 def forward_interpolate(flow):
@@ -335,7 +356,7 @@ class FlowDataset(torch.utils.data.Dataset):
 
         self.sparse = sparse
         # self.is_test = False
-        # self.init_seed = False
+        self.init_seed = False
         self.flow_list = []
         self.image_list = []
         self.extra_info = []
@@ -351,13 +372,13 @@ class FlowDataset(torch.utils.data.Dataset):
         #     img2 = torch.from_numpy(img2).permute(2, 0, 1).float()
         #     return img1, img2, self.extra_info[index]
 
-        # if not self.init_seed:
-        #     worker_info = torch.utils.data.get_worker_info()
-        #     if worker_info is not None:
-        #         torch.manual_seed(worker_info.id)
-        #         np.random.seed(worker_info.id)
-        #         random.seed(worker_info.id)
-        #         self.init_seed = True
+        if not self.init_seed:
+            worker_info = torch.utils.data.get_worker_info()
+            if worker_info is not None:
+                torch.manual_seed(worker_info.id)
+                np.random.seed(worker_info.id)
+                random.seed(worker_info.id)
+                self.init_seed = True
 
         index = index % len(self.image_list)
 
@@ -476,7 +497,6 @@ class FlowDataset(torch.utils.data.Dataset):
                 raise ValueError("Does this ever happen??????????????????")
                 return flow
             else:
-                raise ValueError("Does this ever happen?")
                 return flow[:, :, :-1]
         else:
             raise ValueError("Unknown file extension")
@@ -497,8 +517,6 @@ class KittiFlowDataset(FlowDataset):
         split='training',
         aug_params=None,
     ):
-        if aug_params is None:
-            aug_params = {'crop_size': (288, 960), 'min_scale': -0.2, 'max_scale': 0.4, 'do_flip': False}
 
         super().__init__(aug_params=aug_params, sparse=True)
 
@@ -525,8 +543,6 @@ class FlyingChairs(FlowDataset):
         split='training',
         aug_params=None,
     ):
-        if aug_params is None:
-            aug_params = {'crop_size': (368, 496), 'min_scale': -0.1, 'max_scale': 1.0, 'do_flip': True}
         super().__init__(aug_params=aug_params, sparse=False)
 
         images = sorted(glob(osp.join(root, 'data/*.ppm')))  # TODO: os.sep
@@ -546,12 +562,10 @@ class FlyingChairs(FlowDataset):
 class FlyingThings3D(FlowDataset):
     def __init__(
         self,
-        root='/data/home/nicolashug/cluster/work/downloads/FlyingThings3D/102218/',
+        root='/data/home/nicolashug/cluster/work/downloads/FlyingThings3D/',
         aug_params=None,
         dstype='frames_cleanpass'
     ):
-        if aug_params is None:
-            aug_params = {'crop_size': (400, 720), 'min_scale': -0.4, 'max_scale': 0.8, 'do_flip': True}
         super().__init__(aug_params=aug_params, sparse=False)
 
         cam = 'left'  # TODO: Use both cams?
@@ -565,8 +579,6 @@ class FlyingThings3D(FlowDataset):
             for idir, fdir in zip(image_dirs, flow_dirs):
                 images = sorted(glob(osp.join(idir, '*.png')) )
                 flows = sorted(glob(osp.join(fdir, '*.pfm')) )
-                print(images)
-                print(flows)
                 for i in range(len(flows)-1):
                     if direction == 'into_future':
                         self.image_list += [ [images[i], images[i+1]] ]
@@ -585,8 +597,6 @@ class Sintel(FlowDataset):
         dstype='clean'
     ):
 
-        if aug_params is None:
-            aug_params = {'crop_size': (368, 768), 'min_scale': -0.2, 'max_scale': 0.6, 'do_flip': True}
         super().__init__(aug_params=aug_params)
 
         flow_root = osp.join(root, split, 'flow')

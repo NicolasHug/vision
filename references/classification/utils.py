@@ -254,6 +254,7 @@ def save_on_master(*args, **kwargs):
 
 
 def init_distributed_mode(args):
+    # print(f"BEFORE, {args.rank, args.gpu, args.world_size = }")
     if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
         args.rank = int(os.environ["RANK"])
         args.world_size = int(os.environ['WORLD_SIZE'])
@@ -261,6 +262,7 @@ def init_distributed_mode(args):
     elif 'SLURM_PROCID' in os.environ:
         args.rank = int(os.environ['SLURM_PROCID'])
         args.gpu = args.rank % torch.cuda.device_count()
+        print(f"AFTER, {args.rank, args.gpu = }")
     elif hasattr(args, "rank"):
         pass
     else:
