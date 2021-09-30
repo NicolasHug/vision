@@ -252,10 +252,10 @@ def validate_sintel(model, args, iters=32):
     model.eval()
     for dstype in ['clean', 'final']:
         logger = MetricLogger(output_dir=args.output_dir)
-        logger.add_meter('flow_loss', fmt="{global_avg:.4f} ({value:.4f})")
-        logger.add_meter('1px', fmt="{global_avg:.4f} ({value:.4f})")
-        logger.add_meter('3px', fmt="{global_avg:.4f} ({value:.4f})")
-        logger.add_meter('5px', fmt="{global_avg:.4f} ({value:.4f})")
+        logger.add_meter('epe', fmt="{global_avg:.4f} ({value:.4f})", tb_val='global_avg')
+        logger.add_meter('1px', fmt="{global_avg:.4f} ({value:.4f})", tb_val='global_avg')
+        logger.add_meter('3px', fmt="{global_avg:.4f} ({value:.4f})", tb_val='global_avg')
+        logger.add_meter('5px', fmt="{global_avg:.4f} ({value:.4f})", tb_val='global_avg')
 
         val_dataset = Sintel(split='training', dstype=dstype)
         sampler = torch.utils.data.distributed.DistributedSampler(
@@ -283,7 +283,7 @@ def validate_sintel(model, args, iters=32):
             
             logger.meters['epe'].update(epe.mean(), n=epe.numel())
             for distance in (1, 3, 5):
-                logger.meters[f'px{distance}'].update((epe < distance).float().mean(), n=epe.numel())
+                logger.meters[f'{distance}px'].update((epe < distance).float().mean(), n=epe.numel())
 
         logger.synchronize_between_processes()
         print(header, logger)
@@ -366,7 +366,7 @@ def main(args):
     logger.add_meter('3px', tb_val='value')
     logger.add_meter('5px', tb_val='value')
 
-    VAL_FREQ = 5  # validate every X epochs
+    VAL_FREQ = 2  # validate every X epochs
 
     done = False
     current_epoch = current_step = 0
@@ -414,7 +414,7 @@ def main(args):
             done = True
 
         if args.rank == 0:
-            torch.save(model.state_dict(), Path(args.output_dir) / f'{args.name}_{current_epoch + 1}.pth')
+            torch.save(model.state_dict(), Path(args.output_dir) / f'{args.name}_{current_epoch}.pth')
             torch.save(model.state_dict(), Path(args.output_dir) / f'{args.name}.pth')
 
         if current_epoch % VAL_FREQ == 0:
