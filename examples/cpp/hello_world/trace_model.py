@@ -1,6 +1,7 @@
 import os.path as osp
 
 import torch
+
 import torchvision
 
 HERE = osp.dirname(osp.abspath(__file__))

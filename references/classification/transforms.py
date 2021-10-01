@@ -1,8 +1,9 @@
 import math
-import torch
-
 from typing import Tuple
+
+import torch
 from torch import Tensor
+
 from torchvision.transforms import functional as F
 
 
@@ -19,9 +20,7 @@ class RandomMixup(torch.nn.Module):
         inplace (bool): boolean to make this transform inplace. Default set to False.
     """
 
-    def __init__(self, num_classes: int,
-                 p: float = 0.5, alpha: float = 1.0,
-                 inplace: bool = False) -> None:
+    def __init__(self, num_classes: int, p: float = 0.5, alpha: float = 1.0, inplace: bool = False) -> None:
         super().__init__()
         assert num_classes > 0, "Please provide a valid positive value for the num_classes."
         assert alpha > 0, "Alpha param can't be zero."
@@ -45,7 +44,7 @@ class RandomMixup(torch.nn.Module):
         elif target.ndim != 1:
             raise ValueError("Target ndim should be 1. Got {}".format(target.ndim))
         elif not batch.is_floating_point():
-            raise TypeError('Batch dtype should be a float tensor. Got {}.'.format(batch.dtype))
+            raise TypeError("Batch dtype should be a float tensor. Got {}.".format(batch.dtype))
         elif target.dtype != torch.int64:
             raise TypeError("Target dtype should be torch.int64. Got {}".format(target.dtype))
 
@@ -74,12 +73,12 @@ class RandomMixup(torch.nn.Module):
         return batch, target
 
     def __repr__(self) -> str:
-        s = self.__class__.__name__ + '('
-        s += 'num_classes={num_classes}'
-        s += ', p={p}'
-        s += ', alpha={alpha}'
-        s += ', inplace={inplace}'
-        s += ')'
+        s = self.__class__.__name__ + "("
+        s += "num_classes={num_classes}"
+        s += ", p={p}"
+        s += ", alpha={alpha}"
+        s += ", inplace={inplace}"
+        s += ")"
         return s.format(**self.__dict__)
 
 
@@ -97,9 +96,7 @@ class RandomCutmix(torch.nn.Module):
         inplace (bool): boolean to make this transform inplace. Default set to False.
     """
 
-    def __init__(self, num_classes: int,
-                 p: float = 0.5, alpha: float = 1.0,
-                 inplace: bool = False) -> None:
+    def __init__(self, num_classes: int, p: float = 0.5, alpha: float = 1.0, inplace: bool = False) -> None:
         super().__init__()
         assert num_classes > 0, "Please provide a valid positive value for the num_classes."
         assert alpha > 0, "Alpha param can't be zero."
@@ -123,7 +120,7 @@ class RandomCutmix(torch.nn.Module):
         elif target.ndim != 1:
             raise ValueError("Target ndim should be 1. Got {}".format(target.ndim))
         elif not batch.is_floating_point():
-            raise TypeError('Batch dtype should be a float tensor. Got {}.'.format(batch.dtype))
+            raise TypeError("Batch dtype should be a float tensor. Got {}.".format(batch.dtype))
         elif target.dtype != torch.int64:
             raise TypeError("Target dtype should be torch.int64. Got {}".format(target.dtype))
 
@@ -166,10 +163,10 @@ class RandomCutmix(torch.nn.Module):
         return batch, target
 
     def __repr__(self) -> str:
-        s = self.__class__.__name__ + '('
-        s += 'num_classes={num_classes}'
-        s += ', p={p}'
-        s += ', alpha={alpha}'
-        s += ', inplace={inplace}'
-        s += ')'
+        s = self.__class__.__name__ + "("
+        s += "num_classes={num_classes}"
+        s += ", p={p}"
+        s += ", alpha={alpha}"
+        s += ", inplace={inplace}"
+        s += ")"
         return s.format(**self.__dict__)

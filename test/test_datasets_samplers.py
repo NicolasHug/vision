@@ -1,9 +1,12 @@
 import contextlib
-import sys
 import os
-import torch
+import sys
+
 import pytest
 
+import torch
+
+from torchvision import get_video_backend
 from torchvision import io
 from torchvision.datasets.samplers import (
     DistributedSampler,
@@ -11,7 +14,6 @@ from torchvision.datasets.samplers import (
     UniformClipSampler,
 )
 from torchvision.datasets.video_utils import VideoClips, unfold
-from torchvision import get_video_backend
 
 from common_utils import get_list_of_videos, assert_equal
 
@@ -24,7 +26,7 @@ class TestDatasetsSamplers:
         sampler = RandomClipSampler(video_clips, 3)
         assert len(sampler) == 3 * 3
         indices = torch.tensor(list(iter(sampler)))
-        videos = torch.div(indices, 5, rounding_mode='floor')
+        videos = torch.div(indices, 5, rounding_mode="floor")
         v_idxs, count = torch.unique(videos, return_counts=True)
         assert_equal(v_idxs, torch.tensor([0, 1, 2]))
         assert_equal(count, torch.tensor([3, 3, 3]))
@@ -41,7 +43,7 @@ class TestDatasetsSamplers:
         indices.remove(0)
         indices.remove(1)
         indices = torch.tensor(indices) - 2
-        videos = torch.div(indices, 5, rounding_mode='floor')
+        videos = torch.div(indices, 5, rounding_mode="floor")
         v_idxs, count = torch.unique(videos, return_counts=True)
         assert_equal(v_idxs, torch.tensor([0, 1]))
         assert_equal(count, torch.tensor([3, 3]))
@@ -52,7 +54,7 @@ class TestDatasetsSamplers:
         sampler = UniformClipSampler(video_clips, 3)
         assert len(sampler) == 3 * 3
         indices = torch.tensor(list(iter(sampler)))
-        videos = torch.div(indices, 5, rounding_mode='floor')
+        videos = torch.div(indices, 5, rounding_mode="floor")
         v_idxs, count = torch.unique(videos, return_counts=True)
         assert_equal(v_idxs, torch.tensor([0, 1, 2]))
         assert_equal(count, torch.tensor([3, 3, 3]))
@@ -92,5 +94,5 @@ class TestDatasetsSamplers:
         assert_equal(indices, torch.tensor([5, 7, 9, 0, 2, 4]))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pytest.main([__file__])

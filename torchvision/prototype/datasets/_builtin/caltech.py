@@ -1,9 +1,10 @@
 import io
 import pathlib
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import re
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+from torchdata.datapipes.iter import KeyZipper
 
 import torch
 from torch.utils.data import IterDataPipe
@@ -14,7 +15,6 @@ from torch.utils.data.datapipes.iter import (
     Filter,
 )
 
-from torchdata.datapipes.iter import KeyZipper
 from torchvision.prototype.datasets.utils import (
     Dataset,
     DatasetConfig,
