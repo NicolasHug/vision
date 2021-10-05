@@ -3,9 +3,9 @@ import os
 import time
 from collections import defaultdict
 from collections import deque
-import torch.nn.functional as F
 
 import torch
+import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 
 
@@ -231,7 +231,6 @@ class InputPadder:
         ht, wd = x.shape[-2:]
         c = [self._pad[2], ht - self._pad[3], self._pad[0], wd - self._pad[1]]
         return x[..., c[0] : c[1], c[2] : c[3]]
-
 
 
 def _redefine_print(is_main):

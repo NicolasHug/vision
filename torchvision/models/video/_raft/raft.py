@@ -1,10 +1,8 @@
-from typing import Callable, List, Tuple, Union
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .utils import bilinear_sampler, coords_grid, upflow8, set_attributes
+from .utils import bilinear_sampler, coords_grid, upflow8
 
 autocast = torch.cuda.amp.autocast
 

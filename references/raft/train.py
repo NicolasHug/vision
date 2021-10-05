@@ -4,19 +4,20 @@ from pathlib import Path
 import numpy as np
 import torch
 from torch.cuda.amp import GradScaler
+from torchvision.datasets import KittiFlowDataset, FlyingChairs, FlyingThings3D, Sintel
 from torchvision.models.video import RAFT
-from torchvision.models.video._raft.utils import KittiFlowDataset, FlyingChairs, FlyingThings3D, Sintel
+from transforms import FlowAugmentor, SparseFlowAugmentor
 from utils import MetricLogger, setup_ddp, sequence_loss, InputPadder
-
 
 
 def get_train_dataset(dataset_name):
     d = {"kitti": KittiFlowDataset, "chairs": FlyingChairs, "things": FlyingThings3D, "sintel": Sintel}
-    aug_params = {
-        "kitti": {"crop_size": (288, 960), "min_scale": -0.2, "max_scale": 0.4, "do_flip": False},
-        "chairs": {"crop_size": (368, 496), "min_scale": -0.1, "max_scale": 1.0, "do_flip": True},
-        "things": {"crop_size": (400, 720), "min_scale": -0.4, "max_scale": 0.8, "do_flip": True},
-        "sintel": {"crop_size": (368, 768), "min_scale": -0.2, "max_scale": 0.6, "do_flip": True},
+
+    transforms = {
+        "kitti": SparseFlowAugmentor(crop_size=(288, 960), min_scale=-0.2, max_scale=0.4, do_flip=False),
+        "chairs": FlowAugmentor(crop_size=(368, 496), min_scale=0.1, max_scale=1.0, do_flip=True),
+        "things": FlowAugmentor(crop_size=(400, 720), min_scale=-0.4, max_scale=0.8, do_flip=True),
+        "sintel": FlowAugmentor(crop_size=(368, 768), min_scale=-0.2, max_scale=0.6, do_flip=True),
     }
 
     dataset_name = dataset_name.lower()
@@ -25,7 +26,7 @@ def get_train_dataset(dataset_name):
         raise ValueError(f"Unknown dataset {dataset_name}")
 
     klass = d[dataset_name]
-    return klass(aug_params=aug_params[dataset_name])
+    return klass(transforms=transforms[dataset_name])
 
 
 @torch.no_grad()
