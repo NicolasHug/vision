@@ -172,17 +172,6 @@ class ExponentialMovingAverage(torch.optim.swa_utils.AveragedModel):
                    decay * avg_model_param + (1 - decay) * model_param)
         super().__init__(model, device, ema_avg)
 
-    def update_parameters(self, model):
-        for p_swa, p_model in zip(self.module.state_dict().values(), model.state_dict().values()):
-            device = p_swa.device
-            p_model_ = p_model.detach().to(device)
-            if self.n_averaged == 0:
-                p_swa.detach().copy_(p_model_)
-            else:
-                p_swa.detach().copy_(self.avg_fn(p_swa.detach(), p_model_,
-                                     self.n_averaged.to(device)))
-            self.n_averaged += 1
-
 
 def accuracy(output, target, topk=(1,)):
     """Computes the accuracy over the k top predictions for the specified values of k"""
@@ -254,7 +243,6 @@ def save_on_master(*args, **kwargs):
 
 
 def init_distributed_mode(args):
-    # print(f"BEFORE, {args.rank, args.gpu, args.world_size = }")
     if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
         args.rank = int(os.environ["RANK"])
         args.world_size = int(os.environ['WORLD_SIZE'])
@@ -262,7 +250,6 @@ def init_distributed_mode(args):
     elif 'SLURM_PROCID' in os.environ:
         args.rank = int(os.environ['SLURM_PROCID'])
         args.gpu = args.rank % torch.cuda.device_count()
-        print(f"AFTER, {args.rank, args.gpu = }")
     elif hasattr(args, "rank"):
         pass
     else:
