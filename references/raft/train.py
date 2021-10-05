@@ -218,7 +218,7 @@ class MetricLogger(object):
         print('{} Total time: {}'.format(header, total_time_str))
 
     def close(self):
-        self.writer.close()
+        self.tb_writer.close()
 
 
 def _get_train_dataset(dataset_name):
@@ -314,7 +314,6 @@ def main(args):
 
     print("Parameter Count: %d" % count_parameters(model))
 
-    # TODO: This looks important
     if args.train_dataset != 'chairs':
         model.module.freeze_bn()
     
