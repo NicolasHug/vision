@@ -1,17 +1,16 @@
 import argparse
+import datetime
 import os
 import os.path as osp
-from pathlib import Path
-from collections import defaultdict
 import time
+from collections import defaultdict
 from collections import deque
-import datetime
+from pathlib import Path
 
-import torch
-from torch.utils.tensorboard import SummaryWriter
-from torch.cuda.amp import GradScaler
 import numpy as np
-
+import torch
+from torch.cuda.amp import GradScaler
+from torch.utils.tensorboard import SummaryWriter
 from torchvision.models.video import RAFT
 from torchvision.models.video._raft.utils import KittiFlowDataset, FlyingChairs, FlyingThings3D, Sintel, InputPadder
 
@@ -20,29 +19,29 @@ MAX_FLOW = 400
 
 
 def sequence_loss(flow_preds, flow_gt, valid, gamma=0.8, max_flow=MAX_FLOW):
-    """ Loss function defined over sequence of flow predictions """
+    """Loss function defined over sequence of flow predictions"""
 
     n_predictions = len(flow_preds)
     flow_loss = 0.0
 
     # exlude invalid pixels and extremely large diplacements
-    mag = torch.sum(flow_gt**2, dim=1).sqrt()
+    mag = torch.sum(flow_gt ** 2, dim=1).sqrt()
     valid = (valid >= 0.5) & (mag < max_flow)
 
     for i in range(n_predictions):
-        i_weight = gamma**(n_predictions - i - 1)
+        i_weight = gamma ** (n_predictions - i - 1)
         i_loss = (flow_preds[i] - flow_gt).abs()
         flow_loss += i_weight * (valid[:, None] * i_loss).mean()
 
-    epe = torch.sum((flow_preds[-1] - flow_gt)**2, dim=1).sqrt()
+    epe = torch.sum((flow_preds[-1] - flow_gt) ** 2, dim=1).sqrt()
     epe = epe.view(-1)[valid.view(-1)]
 
     metrics = {
-        'flow_loss': flow_loss,
-        'epe': epe.mean().item(),
-        '1px': (epe < 1).float().mean().item(),
-        '3px': (epe < 3).float().mean().item(),
-        '5px': (epe < 5).float().mean().item(),
+        "flow_loss": flow_loss,
+        "epe": epe.mean().item(),
+        "1px": (epe < 1).float().mean().item(),
+        "3px": (epe < 3).float().mean().item(),
+        "5px": (epe < 5).float().mean().item(),
     }
 
     return flow_loss, metrics
@@ -53,7 +52,7 @@ class SmoothedValue(object):
     window or the global series average.
     """
 
-    def __init__(self, window_size=20, fmt=None, tb_val='avg'):
+    def __init__(self, window_size=20, fmt=None, tb_val="avg"):
         if fmt is None:
             fmt = "{" + tb_val + ":.4f}"
         self.deque = deque(maxlen=window_size)
@@ -71,13 +70,13 @@ class SmoothedValue(object):
         """
         Warning: does not synchronize the deque!
         """
-        t = torch.tensor([self.count, self.total], dtype=torch.float64, device='cuda')
+        t = torch.tensor([self.count, self.total], dtype=torch.float64, device="cuda")
         torch.distributed.barrier()
         torch.distributed.all_reduce(t)
         t = t.tolist()
         self.count = int(t[0])
         self.total = t[1]
-    
+
     def get_tb_val(self):
         # tells tensorboard what it should register
         # For some values we want the running avg, for some we just want the last value
@@ -123,11 +122,8 @@ class SmoothedValue(object):
     def __str__(self):
         if self.deque:
             return self.fmt.format(
-                median=self.median,
-                avg=self.avg,
-                global_avg=self.global_avg,
-                max=self.max,
-                value=self.value)
+                median=self.median, avg=self.avg, global_avg=self.global_avg, max=self.max, value=self.value
+            )
         else:
             return str(None)
 
@@ -148,23 +144,19 @@ class MetricLogger(object):
             return self.meters[attr]
         if attr in self.__dict__:
             return self.__dict__[attr]
-        raise AttributeError("'{}' object has no attribute '{}'".format(
-            type(self).__name__, attr))
+        raise AttributeError("'{}' object has no attribute '{}'".format(type(self).__name__, attr))
 
     def __str__(self):
-        return self.delimiter.join([
-                "{}: {}".format(name, str(meter))
-                for name, meter in self.meters.items()
-                if name not in self.dont_print
-
-        ])
+        return self.delimiter.join(
+            ["{}: {}".format(name, str(meter)) for name, meter in self.meters.items() if name not in self.dont_print]
+        )
 
     def synchronize_between_processes(self):
         for meter in self.meters.values():
             meter.synchronize_between_processes()
 
     def add_meter(self, name, **kwargs):
-        if not kwargs.pop('print', True):
+        if not kwargs.pop("print", True):
             self.dont_print.add(name)
         self.meters[name] = SmoothedValue(window_size=self.freq, **kwargs)
 
@@ -175,21 +167,23 @@ class MetricLogger(object):
             assert isinstance(v, (float, int))
             self.meters[k].update(v)
 
-    def log(self, iterable, header='', sync=False):
+    def log(self, iterable, header="", sync=False):
         start_time = time.time()
         end = time.time()
-        iter_time = SmoothedValue(fmt='{avg:.4f}')
-        data_time = SmoothedValue(fmt='{avg:.4f}')
-        space_fmt = ':' + str(len(str(len(iterable)))) + 'd'
-        log_msg = self.delimiter.join([
-            header,
-            '[{0' + space_fmt + '}/{1}]',
-            'eta: {eta}',
-            '{meters}',
-            'time: {time}',
-            'data: {data}',
-            'max mem: {memory:.0f}'
-        ])
+        iter_time = SmoothedValue(fmt="{avg:.4f}")
+        data_time = SmoothedValue(fmt="{avg:.4f}")
+        space_fmt = ":" + str(len(str(len(iterable)))) + "d"
+        log_msg = self.delimiter.join(
+            [
+                header,
+                "[{0" + space_fmt + "}/{1}]",
+                "eta: {eta}",
+                "{meters}",
+                "time: {time}",
+                "data: {data}",
+                "max mem: {memory:.0f}",
+            ]
+        )
 
         MB = 1024.0 * 1024.0
         i = 0
@@ -202,12 +196,18 @@ class MetricLogger(object):
                     self.synchronize_between_processes()
                 eta_seconds = iter_time.global_avg * (len(iterable) - i)
                 eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
-                print(log_msg.format(
-                    i, len(iterable), eta=eta_string,
-                    meters=str(self),
-                    time=str(iter_time), data=str(data_time),
-                    memory=torch.cuda.max_memory_allocated() / MB))
-                
+                print(
+                    log_msg.format(
+                        i,
+                        len(iterable),
+                        eta=eta_string,
+                        meters=str(self),
+                        time=str(iter_time),
+                        data=str(data_time),
+                        memory=torch.cuda.max_memory_allocated() / MB,
+                    )
+                )
+
                 for name, meter in self.meters.items():
                     self.tb_writer.add_scalar(f"{header} {name}", meter.get_tb_val(), self.current_step)
             i += 1
@@ -215,24 +215,19 @@ class MetricLogger(object):
             end = time.time()
         total_time = time.time() - start_time
         total_time_str = str(datetime.timedelta(seconds=int(total_time)))
-        print('{} Total time: {}'.format(header, total_time_str))
+        print("{} Total time: {}".format(header, total_time_str))
 
     def close(self):
         self.tb_writer.close()
 
 
 def _get_train_dataset(dataset_name):
-    d = {
-        'kitti': KittiFlowDataset,
-        'chairs': FlyingChairs,
-        'things': FlyingThings3D,
-        'sintel': Sintel
-    }
+    d = {"kitti": KittiFlowDataset, "chairs": FlyingChairs, "things": FlyingThings3D, "sintel": Sintel}
     aug_params = {
-        'kitti': {'crop_size': (288, 960), 'min_scale': -0.2, 'max_scale': 0.4, 'do_flip': False},
-        'chairs': {'crop_size': (368, 496), 'min_scale': -0.1, 'max_scale': 1.0, 'do_flip': True},
-        'things': {'crop_size': (400, 720), 'min_scale': -0.4, 'max_scale': 0.8, 'do_flip': True},
-        'sintel': {'crop_size': (368, 768), 'min_scale': -0.2, 'max_scale': 0.6, 'do_flip': True},
+        "kitti": {"crop_size": (288, 960), "min_scale": -0.2, "max_scale": 0.4, "do_flip": False},
+        "chairs": {"crop_size": (368, 496), "min_scale": -0.1, "max_scale": 1.0, "do_flip": True},
+        "things": {"crop_size": (400, 720), "min_scale": -0.4, "max_scale": 0.8, "do_flip": True},
+        "sintel": {"crop_size": (368, 768), "min_scale": -0.2, "max_scale": 0.6, "do_flip": True},
     }
 
     dataset_name = dataset_name.lower()
@@ -250,24 +245,23 @@ def validate_sintel(model, args, iters=32):
     # the dataset isn't divisible by the batch size.
 
     model.eval()
-    for dstype in ['clean', 'final']:
+    for dstype in ["clean", "final"]:
         logger = MetricLogger(output_dir=args.output_dir)
-        logger.add_meter('epe', fmt="{global_avg:.4f} ({value:.4f})", tb_val='global_avg')
-        logger.add_meter('1px', fmt="{global_avg:.4f} ({value:.4f})", tb_val='global_avg')
-        logger.add_meter('3px', fmt="{global_avg:.4f} ({value:.4f})", tb_val='global_avg')
-        logger.add_meter('5px', fmt="{global_avg:.4f} ({value:.4f})", tb_val='global_avg')
+        logger.add_meter("epe", fmt="{global_avg:.4f} ({value:.4f})", tb_val="global_avg")
+        logger.add_meter("1px", fmt="{global_avg:.4f} ({value:.4f})", tb_val="global_avg")
+        logger.add_meter("3px", fmt="{global_avg:.4f} ({value:.4f})", tb_val="global_avg")
+        logger.add_meter("5px", fmt="{global_avg:.4f} ({value:.4f})", tb_val="global_avg")
 
-        val_dataset = Sintel(split='training', dstype=dstype)
-        sampler = torch.utils.data.distributed.DistributedSampler(
-            val_dataset, shuffle=False, drop_last=False)
+        val_dataset = Sintel(split="training", dstype=dstype)
+        sampler = torch.utils.data.distributed.DistributedSampler(val_dataset, shuffle=False, drop_last=False)
         val_loader = torch.utils.data.DataLoader(
             val_dataset,
             sampler=sampler,
-            batch_size=args.batch_size, 
+            batch_size=args.batch_size,
             pin_memory=True,
             num_workers=args.num_workers,
         )
-        header = f'Sintel val {dstype}'
+        header = f"Sintel val {dstype}"
         for blob in logger.log(val_loader, header=header, sync=False):
 
             image1, image2, flow_gt, _ = blob
@@ -279,11 +273,11 @@ def validate_sintel(model, args, iters=32):
             _, flow_pr = model(image1, image2, iters=iters, test_mode=True)
             flow = padder.unpad(flow_pr).cpu()
 
-            epe = torch.sum((flow - flow_gt)**2, dim=1).sqrt()
-            
-            logger.meters['epe'].update(epe.mean(), n=epe.numel())
+            epe = torch.sum((flow - flow_gt) ** 2, dim=1).sqrt()
+
+            logger.meters["epe"].update(epe.mean(), n=epe.numel())
             for distance in (1, 3, 5):
-                logger.meters[f'{distance}px'].update((epe < distance).float().mean(), n=epe.numel())
+                logger.meters[f"{distance}px"].update((epe < distance).float().mean(), n=epe.numel())
 
         logger.synchronize_between_processes()
         print(header, logger)
@@ -307,19 +301,19 @@ def main(args):
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.local_rank])
 
     if args.resume is not None:
-        model.load_state_dict(torch.load(args.resume, map_location='cpu'), strict=False)
+        model.load_state_dict(torch.load(args.resume, map_location="cpu"), strict=False)
 
     # TODO: maybe, maybe not:
     torch.backends.cudnn.benchmark = True
 
     print("Parameter Count: %d" % count_parameters(model))
 
-    if args.train_dataset != 'chairs':
+    if args.train_dataset != "chairs":
         model.module.freeze_bn()
-    
+
     if args.train_dataset is None:
         # just validate then
-        if args.val_dataset == ['sintel']:
+        if args.val_dataset == ["sintel"]:
             validate_sintel(model, args)
         else:
             raise ValueError(f"can't validate on {args.val_dataset}")
@@ -330,12 +324,11 @@ def main(args):
     train_dataset = _get_train_dataset(args.train_dataset)
 
     # TODO: Should drop_last really be True? And shouhld it be set in the loader instead of the sampler?
-    sampler = torch.utils.data.distributed.DistributedSampler(
-        train_dataset, shuffle=True, drop_last=True)
+    sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, shuffle=True, drop_last=True)
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         sampler=sampler,
-        batch_size=args.batch_size, 
+        batch_size=args.batch_size,
         pin_memory=True,  # TODO: find out why it was False in raft repo?
         num_workers=args.num_workers,
         # worker_init_fn=lambda x:print(f"I'm rank {args.rank} and my worker info for data loading is {torch.utils.data.get_worker_info()}", force=True)
@@ -349,21 +342,25 @@ def main(args):
         steps_per_epoch = len(train_dataset) // (args.batch_size * args.world_size)  # +- 1 depending on drop_last?
         extra_scheduler_args = dict(epochs=args.num_epochs, steps_per_epoch=steps_per_epoch)
     scheduler = torch.optim.lr_scheduler.OneCycleLR(
-        optimizer=optimizer, max_lr=args.lr, pct_start=0.05, cycle_momentum=False, anneal_strategy='linear',
-        **extra_scheduler_args
+        optimizer=optimizer,
+        max_lr=args.lr,
+        pct_start=0.05,
+        cycle_momentum=False,
+        anneal_strategy="linear",
+        **extra_scheduler_args,
     )
 
     scaler = GradScaler(enabled=args.mixed_precision)  # TODO: currently untested
     logger = MetricLogger(output_dir=args.output_dir)
-    logger.add_meter('epoch', tb_val='value', print=False)
-    logger.add_meter('current_step', tb_val='value', print=False)
-    logger.add_meter('lr', tb_val='value', print=False)
-    logger.add_meter('wdecay', tb_val='value', print=False)
-    logger.add_meter('last_lr', tb_val='value')
-    logger.add_meter('flow_loss', tb_val='value')
-    logger.add_meter('1px', tb_val='value')
-    logger.add_meter('3px', tb_val='value')
-    logger.add_meter('5px', tb_val='value')
+    logger.add_meter("epoch", tb_val="value", print=False)
+    logger.add_meter("current_step", tb_val="value", print=False)
+    logger.add_meter("lr", tb_val="value", print=False)
+    logger.add_meter("wdecay", tb_val="value", print=False)
+    logger.add_meter("last_lr", tb_val="value")
+    logger.add_meter("flow_loss", tb_val="value")
+    logger.add_meter("1px", tb_val="value")
+    logger.add_meter("3px", tb_val="value")
+    logger.add_meter("5px", tb_val="value")
 
     VAL_FREQ = 2  # validate every X epochs
 
@@ -392,11 +389,11 @@ def main(args):
             scheduler.step()
             scaler.update()
 
-            metrics['epoch'] = current_epoch
-            metrics['current_step'] = current_step
-            metrics['last_lr'] = scheduler.get_last_lr()[0]
-            metrics['lr'] = args.lr
-            metrics['wdecay'] = args.wdecay
+            metrics["epoch"] = current_epoch
+            metrics["current_step"] = current_step
+            metrics["last_lr"] = scheduler.get_last_lr()[0]
+            metrics["lr"] = args.lr
+            metrics["wdecay"] = args.wdecay
             logger.update(**metrics)
 
             current_step += 1
@@ -406,15 +403,15 @@ def main(args):
                 break
 
         logger.synchronize_between_processes()
-        print(f'Epoch {current_epoch} done. ', logger, force=True)
+        print(f"Epoch {current_epoch} done. ", logger, force=True)
 
         current_epoch += 1
         if args.num_epochs is not None and current_epoch == args.num_epochs:
             done = True
 
         if args.rank == 0:
-            torch.save(model.state_dict(), Path(args.output_dir) / f'{args.name}_{current_epoch}.pth')
-            torch.save(model.state_dict(), Path(args.output_dir) / f'{args.name}.pth')
+            torch.save(model.state_dict(), Path(args.output_dir) / f"{args.name}_{current_epoch}.pth")
+            torch.save(model.state_dict(), Path(args.output_dir) / f"{args.name}.pth")
 
         if current_epoch % VAL_FREQ == 0:
             model.eval()
@@ -423,13 +420,13 @@ def main(args):
             for val_dataset in val_datasets:
                 # if val_dataset == 'chairs':
                 #     results.update(evaluate.validate_chairs(model.module))
-                if val_dataset == 'sintel':
+                if val_dataset == "sintel":
                     validate_sintel(model, args)
                 # elif val_dataset == 'kitti':
                 #     results.update(evaluate.validate_kitti(model.module))
 
             model.train()
-            if args.train_dataset != 'chairs':
+            if args.train_dataset != "chairs":
                 model.module.freeze_bn()
 
     logger.close()
@@ -438,10 +435,11 @@ def main(args):
 def redefine_print(is_main):
     """disables printing when not in main process"""
     import builtins as __builtin__
+
     builtin_print = __builtin__.print
 
     def print(*args, **kwargs):
-        force = kwargs.pop('force', False)
+        force = kwargs.pop("force", False)
         if is_main or force:
             builtin_print(*args, **kwargs)
 
@@ -455,14 +453,14 @@ def setup_ddp(args):
     # If you're confused (like I was), this might help a bit
     # https://discuss.pytorch.org/t/what-is-the-difference-between-rank-and-local-rank/61940/2
 
-    if all(key in os.environ for key in ('LOCAL_RANK', 'RANK', 'WORLD_SIZE')):
+    if all(key in os.environ for key in ("LOCAL_RANK", "RANK", "WORLD_SIZE")):
         # if we're here, the script was called with torchhub. Otherwise
         # these args will be set already by the run_with_submitit script
-        args.local_rank = int(os.environ['LOCAL_RANK'])
-        args.rank = int(os.environ['RANK'])
-        args.world_size = int(os.environ['WORLD_SIZE'])
+        args.local_rank = int(os.environ["LOCAL_RANK"])
+        args.rank = int(os.environ["RANK"])
+        args.world_size = int(os.environ["WORLD_SIZE"])
 
-    elif 'gpu' in args:
+    elif "gpu" in args:
         # if we're here, the script was called by run_with_submitit.py
         args.local_rank = args.gpu
     else:
@@ -471,35 +469,41 @@ def setup_ddp(args):
     redefine_print(args.rank == 0)
 
     torch.cuda.set_device(args.local_rank)
-    torch.distributed.init_process_group(backend="nccl", rank=args.rank, world_size=args.world_size, init_method=args.dist_url if "dist_url" in args else "env://")
+    torch.distributed.init_process_group(
+        backend="nccl",
+        rank=args.rank,
+        world_size=args.world_size,
+        init_method=args.dist_url if "dist_url" in args else "env://",
+    )
 
 
 def get_args_parser(add_help=True):
     parser = argparse.ArgumentParser(add_help=add_help)
-    parser.add_argument('--name', default='raft', help="name your experiment")
-    parser.add_argument('--train-dataset', help="determines which dataset to use for training") 
-    parser.add_argument('--resume', help="restore checkpoint")
-    parser.add_argument('--val-dataset', type=str, nargs='+')
-    parser.add_argument('--small', action='store_true', help='use small model')
-    parser.add_argument('--output-dir', default='checkpoints', type=str)
-    parser.add_argument('--num-workers', type=int, default=16)
-    parser.add_argument('--lr', type=float, default=0.00002)
+    parser.add_argument("--name", default="raft", help="name your experiment")
+    parser.add_argument("--train-dataset", help="determines which dataset to use for training")
+    parser.add_argument("--resume", help="restore checkpoint")
+    parser.add_argument("--val-dataset", type=str, nargs="+")
+    parser.add_argument("--small", action="store_true", help="use small model")
+    parser.add_argument("--output-dir", default="checkpoints", type=str)
+    parser.add_argument("--num-workers", type=int, default=16)
+    parser.add_argument("--lr", type=float, default=0.00002)
 
     # TODO: make these mutually exclusive maybe?
-    parser.add_argument('--num-epochs', type=int, default=500)
-    parser.add_argument('--num-steps', type=int, default=100000)
+    parser.add_argument("--num-epochs", type=int, default=500)
+    parser.add_argument("--num-steps", type=int, default=100000)
 
-    parser.add_argument('--batch-size', type=int, default=6)
-    parser.add_argument('--mixed_precision', action='store_true', help='use mixed precision')
+    parser.add_argument("--batch-size", type=int, default=6)
+    parser.add_argument("--mixed_precision", action="store_true", help="use mixed precision")
 
-    parser.add_argument('--iters', type=int, default=12)
-    parser.add_argument('--wdecay', type=float, default=.00005)
-    parser.add_argument('--epsilon', type=float, default=1e-8)
-    parser.add_argument('--clip', type=float, default=1.0)
-    parser.add_argument('--gamma', type=float, default=0.8, help='exponential weighting')
+    parser.add_argument("--iters", type=int, default=12)
+    parser.add_argument("--wdecay", type=float, default=0.00005)
+    parser.add_argument("--epsilon", type=float, default=1e-8)
+    parser.add_argument("--clip", type=float, default=1.0)
+    parser.add_argument("--gamma", type=float, default=0.8, help="exponential weighting")
     return parser
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     args = get_args_parser().parse_args()
 
     if not osp.isdir(args.output_dir):

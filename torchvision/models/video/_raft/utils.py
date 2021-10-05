@@ -1,37 +1,38 @@
-import  re
 import os
 import os.path as osp
+import random
+import re
 from glob import glob
 
+import cv2
 import numpy as np
 import torch
 import torch.nn.functional as F
-from scipy import interpolate
 from PIL import Image
-import cv2
-import random
+from scipy import interpolate
 
 from ....transforms import ColorJitter
 
 
 class InputPadder:
-    """ Pads images such that dimensions are divisible by 8 """
-    def __init__(self, dims, mode='sintel'):
+    """Pads images such that dimensions are divisible by 8"""
+
+    def __init__(self, dims, mode="sintel"):
         self.ht, self.wd = dims[-2:]
         pad_ht = (((self.ht // 8) + 1) * 8 - self.ht) % 8
         pad_wd = (((self.wd // 8) + 1) * 8 - self.wd) % 8
-        if mode == 'sintel':
-            self._pad = [pad_wd//2, pad_wd - pad_wd//2, pad_ht//2, pad_ht - pad_ht//2]
+        if mode == "sintel":
+            self._pad = [pad_wd // 2, pad_wd - pad_wd // 2, pad_ht // 2, pad_ht - pad_ht // 2]
         else:
-            self._pad = [pad_wd//2, pad_wd - pad_wd//2, 0, pad_ht]
+            self._pad = [pad_wd // 2, pad_wd - pad_wd // 2, 0, pad_ht]
 
     def pad(self, *inputs):
-        return [F.pad(x, self._pad, mode='replicate') for x in inputs]
+        return [F.pad(x, self._pad, mode="replicate") for x in inputs]
 
-    def unpad(self,x):
+    def unpad(self, x):
         ht, wd = x.shape[-2:]
-        c = [self._pad[2], ht-self._pad[3], self._pad[0], wd-self._pad[1]]
-        return x[..., c[0]:c[1], c[2]:c[3]]
+        c = [self._pad[2], ht - self._pad[3], self._pad[0], wd - self._pad[1]]
+        return x[..., c[0] : c[1], c[2] : c[3]]
 
 
 def forward_interpolate(flow):
@@ -55,13 +56,9 @@ def forward_interpolate(flow):
     dx = dx[valid]
     dy = dy[valid]
 
-    flow_x = interpolate.griddata(
-        (x1, y1), dx, (x0, y0), method="nearest", fill_value=0
-    )
+    flow_x = interpolate.griddata((x1, y1), dx, (x0, y0), method="nearest", fill_value=0)
 
-    flow_y = interpolate.griddata(
-        (x1, y1), dy, (x0, y0), method="nearest", fill_value=0
-    )
+    flow_y = interpolate.griddata((x1, y1), dy, (x0, y0), method="nearest", fill_value=0)
 
     flow = np.stack([flow_x, flow_y], axis=0)
     return torch.from_numpy(flow).float()
@@ -106,10 +103,11 @@ def set_attributes(self, params):
             if k != "self":
                 setattr(self, k, v)
 
+
 class FlowAugmentor:
     # TODO: maybe common class with SparseAugmentor?
     def __init__(self, crop_size, min_scale=-0.2, max_scale=0.5, do_flip=True):
-        
+
         # spatial augmentation params
         self.crop_size = crop_size
         self.min_scale = min_scale
@@ -124,12 +122,12 @@ class FlowAugmentor:
         self.v_flip_prob = 0.1
 
         # photometric augmentation params
-        self.photo_aug = ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.5/3.14)
+        self.photo_aug = ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.5 / 3.14)
         self.asymmetric_color_aug_prob = 0.2
         self.eraser_aug_prob = 0.5
 
     def color_transform(self, img1, img2):
-        """ Photometric augmentation """
+        """Photometric augmentation"""
 
         # asymmetric
         if np.random.rand() < self.asymmetric_color_aug_prob:
@@ -145,7 +143,7 @@ class FlowAugmentor:
         return img1, img2
 
     def eraser_transform(self, img1, img2, bounds=[50, 100]):
-        """ Occlusion augmentation """
+        """Occlusion augmentation"""
 
         ht, wd = img1.shape[:2]
         if np.random.rand() < self.eraser_aug_prob:
@@ -155,16 +153,14 @@ class FlowAugmentor:
                 y0 = np.random.randint(0, ht)
                 dx = np.random.randint(bounds[0], bounds[1])
                 dy = np.random.randint(bounds[0], bounds[1])
-                img2[y0:y0+dy, x0:x0+dx, :] = mean_color
+                img2[y0 : y0 + dy, x0 : x0 + dx, :] = mean_color
 
         return img1, img2
 
     def spatial_transform(self, img1, img2, flow):
         # randomly sample scale
         ht, wd = img1.shape[:2]
-        min_scale = np.maximum(
-            (self.crop_size[0] + 8) / float(ht), 
-            (self.crop_size[1] + 8) / float(wd))
+        min_scale = np.maximum((self.crop_size[0] + 8) / float(ht), (self.crop_size[1] + 8) / float(wd))
 
         scale = 2 ** np.random.uniform(self.min_scale, self.max_scale)
         scale_x = scale
@@ -172,7 +168,7 @@ class FlowAugmentor:
         if np.random.rand() < self.stretch_prob:
             scale_x *= 2 ** np.random.uniform(-self.max_stretch, self.max_stretch)
             scale_y *= 2 ** np.random.uniform(-self.max_stretch, self.max_stretch)
-        
+
         scale_x = np.clip(scale_x, min_scale, None)
         scale_y = np.clip(scale_y, min_scale, None)
 
@@ -184,22 +180,22 @@ class FlowAugmentor:
             flow = flow * [scale_x, scale_y]
 
         if self.do_flip:
-            if np.random.rand() < self.h_flip_prob: # h-flip
+            if np.random.rand() < self.h_flip_prob:  # h-flip
                 img1 = img1[:, ::-1]
                 img2 = img2[:, ::-1]
                 flow = flow[:, ::-1] * [-1.0, 1.0]
 
-            if np.random.rand() < self.v_flip_prob: # v-flip
+            if np.random.rand() < self.v_flip_prob:  # v-flip
                 img1 = img1[::-1, :]
                 img2 = img2[::-1, :]
                 flow = flow[::-1, :] * [1.0, -1.0]
 
         y0 = np.random.randint(0, img1.shape[0] - self.crop_size[0])
         x0 = np.random.randint(0, img1.shape[1] - self.crop_size[1])
-        
-        img1 = img1[y0:y0+self.crop_size[0], x0:x0+self.crop_size[1]]
-        img2 = img2[y0:y0+self.crop_size[0], x0:x0+self.crop_size[1]]
-        flow = flow[y0:y0+self.crop_size[0], x0:x0+self.crop_size[1]]
+
+        img1 = img1[y0 : y0 + self.crop_size[0], x0 : x0 + self.crop_size[1]]
+        img2 = img2[y0 : y0 + self.crop_size[0], x0 : x0 + self.crop_size[1]]
+        flow = flow[y0 : y0 + self.crop_size[0], x0 : x0 + self.crop_size[1]]
 
         return img1, img2, flow
 
@@ -231,10 +227,10 @@ class SparseFlowAugmentor:
         self.v_flip_prob = 0.1
 
         # photometric augmentation params
-        self.photo_aug = ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.3/3.14)
+        self.photo_aug = ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.3 / 3.14)
         self.asymmetric_color_aug_prob = 0.2
         self.eraser_aug_prob = 0.5
-        
+
     def color_transform(self, img1, img2):
         image_stack = np.concatenate([img1, img2], axis=0)
         image_stack = np.array(self.photo_aug(Image.fromarray(image_stack)), dtype=np.uint8)
@@ -250,7 +246,7 @@ class SparseFlowAugmentor:
                 y0 = np.random.randint(0, ht)
                 dx = np.random.randint(50, 100)
                 dy = np.random.randint(50, 100)
-                img2[y0:y0+dy, x0:x0+dx, :] = mean_color
+                img2[y0 : y0 + dy, x0 : x0 + dx, :] = mean_color
 
         return img1, img2
 
@@ -263,8 +259,8 @@ class SparseFlowAugmentor:
         flow = flow.reshape(-1, 2).astype(np.float32)
         valid = valid.reshape(-1).astype(np.float32)
 
-        coords0 = coords[valid>=1]
-        flow0 = flow[valid>=1]
+        coords0 = coords[valid >= 1]
+        flow0 = flow[valid >= 1]
 
         ht1 = int(round(ht * fy))
         wd1 = int(round(wd * fx))
@@ -272,8 +268,8 @@ class SparseFlowAugmentor:
         coords1 = coords0 * [fx, fy]
         flow1 = flow0 * [fx, fy]
 
-        xx = np.round(coords1[:,0]).astype(np.int32)
-        yy = np.round(coords1[:,1]).astype(np.int32)
+        xx = np.round(coords1[:, 0]).astype(np.int32)
+        yy = np.round(coords1[:, 1]).astype(np.int32)
 
         v = (xx > 0) & (xx < wd1) & (yy > 0) & (yy < ht1)
         xx = xx[v]
@@ -292,9 +288,7 @@ class SparseFlowAugmentor:
         # randomly sample scale
 
         ht, wd = img1.shape[:2]
-        min_scale = np.maximum(
-            (self.crop_size[0] + 1) / float(ht), 
-            (self.crop_size[1] + 1) / float(wd))
+        min_scale = np.maximum((self.crop_size[0] + 1) / float(ht), (self.crop_size[1] + 1) / float(wd))
 
         scale = 2 ** np.random.uniform(self.min_scale, self.max_scale)
         scale_x = np.clip(scale, min_scale, None)
@@ -307,7 +301,7 @@ class SparseFlowAugmentor:
             flow, valid = self.resize_sparse_flow_map(flow, valid, fx=scale_x, fy=scale_y)
 
         if self.do_flip:
-            if np.random.rand() < 0.5: # h-flip
+            if np.random.rand() < 0.5:  # h-flip
                 img1 = img1[:, ::-1]
                 img2 = img2[:, ::-1]
                 flow = flow[:, ::-1] * [-1.0, 1.0]
@@ -322,12 +316,11 @@ class SparseFlowAugmentor:
         y0 = np.clip(y0, 0, img1.shape[0] - self.crop_size[0])
         x0 = np.clip(x0, 0, img1.shape[1] - self.crop_size[1])
 
-        img1 = img1[y0:y0+self.crop_size[0], x0:x0+self.crop_size[1]]
-        img2 = img2[y0:y0+self.crop_size[0], x0:x0+self.crop_size[1]]
-        flow = flow[y0:y0+self.crop_size[0], x0:x0+self.crop_size[1]]
-        valid = valid[y0:y0+self.crop_size[0], x0:x0+self.crop_size[1]]
+        img1 = img1[y0 : y0 + self.crop_size[0], x0 : x0 + self.crop_size[1]]
+        img2 = img2[y0 : y0 + self.crop_size[0], x0 : x0 + self.crop_size[1]]
+        flow = flow[y0 : y0 + self.crop_size[0], x0 : x0 + self.crop_size[1]]
+        valid = valid[y0 : y0 + self.crop_size[0], x0 : x0 + self.crop_size[1]]
         return img1, img2, flow, valid
-
 
     def __call__(self, img1, img2, flow, valid):
         img1, img2 = self.color_transform(img1, img2)
@@ -385,9 +378,9 @@ class FlowDataset(torch.utils.data.Dataset):
         if self.sparse:
             # Note: See README of "development kit" archive of kitti
             flow = cv2.imread(self.flow_list[index], cv2.IMREAD_ANYDEPTH | cv2.IMREAD_COLOR)
-            flow = flow[:,:,::-1].astype(np.float32)
+            flow = flow[:, :, ::-1].astype(np.float32)
             flow, valid = flow[:, :, :2], flow[:, :, 2]
-            flow = (flow - 2**15) / 64.0
+            flow = (flow - 2 ** 15) / 64.0
         else:
             flow = self._read_file(self.flow_list[index])  # TODO: change this
             valid = None
@@ -402,8 +395,8 @@ class FlowDataset(torch.utils.data.Dataset):
 
         # grayscale images
         if len(img1.shape) == 2:
-            img1 = np.tile(img1[...,None], (1, 1, 3))
-            img2 = np.tile(img2[...,None], (1, 1, 3))
+            img1 = np.tile(img1[..., None], (1, 1, 3))
+            img2 = np.tile(img2[..., None], (1, 1, 3))
         else:
             img1 = img1[..., :3]
             img2 = img2[..., :3]
@@ -426,31 +419,31 @@ class FlowDataset(torch.utils.data.Dataset):
         return img1, img2, flow, valid.float()
 
     def _read_file(self, file_name):
-        #TODO: probably put this out of this class
+        # TODO: probably put this out of this class
 
         def read_flow():
-            """ Read .flo file in Middlebury format"""
+            """Read .flo file in Middlebury format"""
             # Code adapted from:
             # http://stackoverflow.com/questions/28013200/reading-middlebury-flow-files-with-python-bytes-array-numpy
 
             # WARNING: this will work on little-endian architectures (eg Intel x86) only!
             # print 'fn = %s'%(fn)
-            with open(file_name, 'rb') as f:
+            with open(file_name, "rb") as f:
                 magic = np.fromfile(f, np.float32, count=1)
                 if 202021.25 != magic:
-                    print('Magic number incorrect. Invalid .flo file')
+                    print("Magic number incorrect. Invalid .flo file")
                     return None
                 else:
                     w = np.fromfile(f, np.int32, count=1)
                     h = np.fromfile(f, np.int32, count=1)
                     # print 'Reading %d x %d flo file\n' % (w, h)
-                    data = np.fromfile(f, np.float32, count=2*int(w)*int(h))
+                    data = np.fromfile(f, np.float32, count=2 * int(w) * int(h))
                     # Reshape data into 3D array (columns, rows, bands)
                     # The reshape here is for visualization, the original code is (w,h,2)
                     return np.resize(data, (int(h), int(w), 2))
 
         def read_PFM():
-            file = open(file_name, 'rb')
+            file = open(file_name, "rb")
 
             color = None
             width = None
@@ -459,27 +452,27 @@ class FlowDataset(torch.utils.data.Dataset):
             endian = None
 
             header = file.readline().rstrip()
-            if header == b'PF':
+            if header == b"PF":
                 color = True
-            elif header == b'Pf':
+            elif header == b"Pf":
                 color = False
             else:
-                raise Exception('Not a PFM file.')
+                raise Exception("Not a PFM file.")
 
-            dim_match = re.match(rb'^(\d+)\s(\d+)\s$', file.readline())
+            dim_match = re.match(rb"^(\d+)\s(\d+)\s$", file.readline())
             if dim_match:
                 width, height = map(int, dim_match.groups())
             else:
-                raise Exception('Malformed PFM header.')
+                raise Exception("Malformed PFM header.")
 
             scale = float(file.readline().rstrip())
-            if scale < 0: # little-endian
-                endian = '<'
+            if scale < 0:  # little-endian
+                endian = "<"
                 scale = -scale
             else:
-                endian = '>' # big-endian
+                endian = ">"  # big-endian
 
-            data = np.fromfile(file, endian + 'f')
+            data = np.fromfile(file, endian + "f")
             shape = (height, width, 3) if color else (height, width)
 
             data = np.reshape(data, shape)
@@ -487,11 +480,11 @@ class FlowDataset(torch.utils.data.Dataset):
             return data
 
         ext = osp.splitext(file_name)[-1]
-        if ext == '.png' or ext == '.jpeg' or ext == '.ppm' or ext == '.jpg':
+        if ext == ".png" or ext == ".jpeg" or ext == ".ppm" or ext == ".jpg":
             return Image.open(file_name)
-        elif ext == '.flo':
+        elif ext == ".flo":
             return read_flow().astype(np.float32)
-        elif ext == '.pfm':
+        elif ext == ".pfm":
             flow = read_PFM().astype(np.float32)
             if len(flow.shape) == 2:
                 raise ValueError("Does this ever happen??????????????????")
@@ -514,7 +507,7 @@ class KittiFlowDataset(FlowDataset):
     def __init__(
         self,
         root="/data/home/nicolashug/cluster/work/downloads/kitti",  # TODO: obviously change that
-        split='training',
+        split="training",
         aug_params=None,
     ):
 
@@ -524,92 +517,92 @@ class KittiFlowDataset(FlowDataset):
         #     self.is_test = True
 
         root = osp.join(root, split)
-        images1 = sorted(glob(osp.join(root, 'image_2/*_10.png')))  # TODO os sep. check everywhere else
-        images2 = sorted(glob(osp.join(root, 'image_2/*_11.png')))
+        images1 = sorted(glob(osp.join(root, "image_2/*_10.png")))  # TODO os sep. check everywhere else
+        images2 = sorted(glob(osp.join(root, "image_2/*_11.png")))
 
         for img1, img2 in zip(images1, images2):
-            frame_id = img1.split('/')[-1]  # TODO os sep
+            frame_id = img1.split("/")[-1]  # TODO os sep
             self.extra_info += [[frame_id]]
             self.image_list += [[img1, img2]]
 
-        if split == 'training':
-            self.flow_list = sorted(glob(osp.join(root, 'flow_occ/*_10.png')))
-        
+        if split == "training":
+            self.flow_list = sorted(glob(osp.join(root, "flow_occ/*_10.png")))
+
 
 class FlyingChairs(FlowDataset):
     def __init__(
         self,
         root="/data/home/nicolashug/cluster/work/downloads/FlyingChairs_release/",
-        split='training',
+        split="training",
         aug_params=None,
     ):
         super().__init__(aug_params=aug_params, sparse=False)
 
-        images = sorted(glob(osp.join(root, 'data/*.ppm')))  # TODO: os.sep
-        flows = sorted(glob(osp.join(root, 'data/*.flo')))
-        assert (len(images)//2 == len(flows))
+        images = sorted(glob(osp.join(root, "data/*.ppm")))  # TODO: os.sep
+        flows = sorted(glob(osp.join(root, "data/*.flo")))
+        assert len(images) // 2 == len(flows)
 
         # TODO: this file is not part of the original dataset, it comes from RAFT repo
         # change this. Hardcode splits when downloading the dataset?
-        split_list = np.loadtxt(osp.join(root, 'chairs_split.txt'), dtype=np.int32)
+        split_list = np.loadtxt(osp.join(root, "chairs_split.txt"), dtype=np.int32)
         for i in range(len(flows)):
             xid = split_list[i]
-            if (split=='training' and xid==1) or (split=='validation' and xid==2):
-                self.flow_list += [ flows[i] ]
-                self.image_list += [ [images[2*i], images[2*i+1]] ]
+            if (split == "training" and xid == 1) or (split == "validation" and xid == 2):
+                self.flow_list += [flows[i]]
+                self.image_list += [[images[2 * i], images[2 * i + 1]]]
 
 
 class FlyingThings3D(FlowDataset):
     def __init__(
         self,
-        root='/data/home/nicolashug/cluster/work/downloads/FlyingThings3D/',
+        root="/data/home/nicolashug/cluster/work/downloads/FlyingThings3D/",
         aug_params=None,
-        dstype='frames_cleanpass'
+        dstype="frames_cleanpass",
     ):
         super().__init__(aug_params=aug_params, sparse=False)
 
-        cam = 'left'  # TODO: Use both cams?
-        for direction in ['into_future', 'into_past']:
-            image_dirs = sorted(glob(osp.join(root, dstype, 'TRAIN/*/*')))
+        cam = "left"  # TODO: Use both cams?
+        for direction in ["into_future", "into_past"]:
+            image_dirs = sorted(glob(osp.join(root, dstype, "TRAIN/*/*")))
             image_dirs = sorted([osp.join(f, cam) for f in image_dirs])
 
-            flow_dirs = sorted(glob(osp.join(root, 'optical_flow/TRAIN/*/*')))
+            flow_dirs = sorted(glob(osp.join(root, "optical_flow/TRAIN/*/*")))
             flow_dirs = sorted([osp.join(f, direction, cam) for f in flow_dirs])
 
             for idir, fdir in zip(image_dirs, flow_dirs):
-                images = sorted(glob(osp.join(idir, '*.png')) )
-                flows = sorted(glob(osp.join(fdir, '*.pfm')) )
-                for i in range(len(flows)-1):
-                    if direction == 'into_future':
-                        self.image_list += [ [images[i], images[i+1]] ]
-                        self.flow_list += [ flows[i] ]
-                    elif direction == 'into_past':
-                        self.image_list += [ [images[i+1], images[i]] ]
-                        self.flow_list += [ flows[i+1] ]
+                images = sorted(glob(osp.join(idir, "*.png")))
+                flows = sorted(glob(osp.join(fdir, "*.pfm")))
+                for i in range(len(flows) - 1):
+                    if direction == "into_future":
+                        self.image_list += [[images[i], images[i + 1]]]
+                        self.flow_list += [flows[i]]
+                    elif direction == "into_past":
+                        self.image_list += [[images[i + 1], images[i]]]
+                        self.flow_list += [flows[i + 1]]
 
 
 class Sintel(FlowDataset):
     def __init__(
         self,
-        root='/data/home/nicolashug/cluster/work/downloads/Sintel',
+        root="/data/home/nicolashug/cluster/work/downloads/Sintel",
         aug_params=None,
-        split='training',
-        dstype='clean'
+        split="training",
+        dstype="clean",
     ):
 
         super().__init__(aug_params=aug_params)
 
-        flow_root = osp.join(root, split, 'flow')
+        flow_root = osp.join(root, split, "flow")
         image_root = osp.join(root, split, dstype)
 
-        if split == 'test':
+        if split == "test":
             self.is_test = True
 
         for scene in os.listdir(image_root):
-            image_list = sorted(glob(osp.join(image_root, scene, '*.png')))
-            for i in range(len(image_list)-1):
-                self.image_list += [ [image_list[i], image_list[i+1]] ]
-                self.extra_info += [ (scene, i) ] # scene and frame_id
+            image_list = sorted(glob(osp.join(image_root, scene, "*.png")))
+            for i in range(len(image_list) - 1):
+                self.image_list += [[image_list[i], image_list[i + 1]]]
+                self.extra_info += [(scene, i)]  # scene and frame_id
 
-            if split != 'test':
-                self.flow_list += sorted(glob(osp.join(flow_root, scene, '*.flo')))
+            if split != "test":
+                self.flow_list += sorted(glob(osp.join(flow_root, scene, "*.flo")))
