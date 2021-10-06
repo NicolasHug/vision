@@ -19,14 +19,6 @@ class FlowDataset(VisionDataset):
         super().__init__(root=root)
         self.transforms = transforms
 
-        # if aug_params is not None:
-        #     if sparse:
-        #         self.augmentor = SparseFlowAugmentor(**aug_params)
-        #     else:
-        #         self.augmentor = FlowAugmentor(**aug_params)
-        # else:
-        #     self.augmentor = None
-
         self._sparse = sparse
         # self.is_test = False
         self.init_seed = False
@@ -54,7 +46,7 @@ class FlowDataset(VisionDataset):
                 random.seed(worker_info.id)
                 self.init_seed = True
 
-        index = index % len(self._image_list)
+        # index = index % len(self._image_list)
 
         if self._sparse:
             # Note: See README of "development kit" archive of kitti

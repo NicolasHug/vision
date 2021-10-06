@@ -1,4 +1,5 @@
-from ._optical_flow import KittiFlowDataset, FlyingChairs, FlyingThings3D, Sintel
+# from ._optical_flow import KittiFlowDataset, FlyingChairs, FlyingThings3D, Sintel
+from ._optical_flow_mine import KittiFlowDataset, FlyingChairs, FlyingThings3D, Sintel
 from .caltech import Caltech101, Caltech256
 from .celeba import CelebA
 from .cifar import CIFAR10, CIFAR100

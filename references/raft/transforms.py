@@ -61,6 +61,7 @@ class FlowAugmentor:
         # randomly sample scale
         ht, wd = img1.shape[:2]
         min_scale = np.maximum((self.crop_size[0] + 8) / float(ht), (self.crop_size[1] + 8) / float(wd))
+        print(f"{min_scale = }")
 
         scale = 2 ** np.random.uniform(self.min_scale, self.max_scale)
         scale_x = scale
@@ -72,12 +73,15 @@ class FlowAugmentor:
         scale_x = np.clip(scale_x, min_scale, None)
         scale_y = np.clip(scale_y, min_scale, None)
 
+        print(f"{(scale_x, scale_y) = }")
+
         if np.random.rand() < self.spatial_aug_prob:
             # rescale the images
             img1 = cv2.resize(img1, None, fx=scale_x, fy=scale_y, interpolation=cv2.INTER_LINEAR)
             img2 = cv2.resize(img2, None, fx=scale_x, fy=scale_y, interpolation=cv2.INTER_LINEAR)
             flow = cv2.resize(flow, None, fx=scale_x, fy=scale_y, interpolation=cv2.INTER_LINEAR)
             flow = flow * [scale_x, scale_y]
+        print(f"{img1.shape = }")
 
         if self.do_flip:
             if np.random.rand() < self.h_flip_prob:  # h-flip
@@ -100,9 +104,13 @@ class FlowAugmentor:
         return img1, img2, flow
 
     def __call__(self, img1, img2, flow):
+        print(img1.shape, img2.shape)
         img1, img2 = self.color_transform(img1, img2)
         img1, img2 = self.eraser_transform(img1, img2)
+        print(img1.shape, img2.shape)
         img1, img2, flow = self.spatial_transform(img1, img2, flow)
+        print(img1.shape, img2.shape)
+        print()
 
         img1 = np.ascontiguousarray(img1)
         img2 = np.ascontiguousarray(img2)
@@ -186,7 +194,6 @@ class SparseFlowAugmentor:
 
     def spatial_transform(self, img1, img2, flow, valid):
         # randomly sample scale
-
         ht, wd = img1.shape[:2]
         min_scale = np.maximum((self.crop_size[0] + 1) / float(ht), (self.crop_size[1] + 1) / float(wd))
 

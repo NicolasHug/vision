@@ -6,15 +6,22 @@ import torch
 from torch.cuda.amp import GradScaler
 from torchvision.datasets import KittiFlowDataset, FlyingChairs, FlyingThings3D, Sintel
 from torchvision.models.video import RAFT
-from transforms import FlowAugmentor, SparseFlowAugmentor
+
+# from transforms import FlowAugmentor, SparseFlowAugmentor
+from transforms_mine import FlowAugmentor, SparseFlowAugmentor
 from utils import MetricLogger, setup_ddp, sequence_loss, InputPadder
 
 
-def get_train_dataset(dataset_name):
-    d = {"kitti": KittiFlowDataset, "chairs": FlyingChairs, "things": FlyingThings3D, "sintel": Sintel}
+def get_train_dataset(dataset_name, small_data=False):
+    d = {
+        # "kitti": KittiFlowDataset,
+        "chairs": FlyingChairs,
+        "things": FlyingThings3D,
+        "sintel": Sintel,
+    }
 
     transforms = {
-        "kitti": SparseFlowAugmentor(crop_size=(288, 960), min_scale=-0.2, max_scale=0.4, do_flip=False),
+        # "kitti": SparseFlowAugmentor(crop_size=(288, 960), min_scale=-0.2, max_scale=0.4, do_flip=False),
         "chairs": FlowAugmentor(crop_size=(368, 496), min_scale=0.1, max_scale=1.0, do_flip=True),
         "things": FlowAugmentor(crop_size=(400, 720), min_scale=-0.4, max_scale=0.8, do_flip=True),
         "sintel": FlowAugmentor(crop_size=(368, 768), min_scale=-0.2, max_scale=0.6, do_flip=True),
@@ -26,11 +33,17 @@ def get_train_dataset(dataset_name):
         raise ValueError(f"Unknown dataset {dataset_name}")
 
     klass = d[dataset_name]
-    return klass(transforms=transforms[dataset_name])
+    dataset = klass(transforms=transforms[dataset_name])
+
+    if small_data:
+        dataset._image_list = dataset._image_list[:200]
+        dataset._flow_list = dataset._flow_list[:200]
+
+    return dataset
 
 
 @torch.no_grad()
-def validate_sintel(model, args, iters=32):
+def validate_sintel(model, args, iters=32, small=False):
     # FIXME: this isn't 100% accurate because some samples will be duplicated if
     # the dataset isn't divisible by the batch size.
 
@@ -43,6 +56,9 @@ def validate_sintel(model, args, iters=32):
         logger.add_meter("5px", fmt="{global_avg:.4f} ({value:.4f})", tb_val="global_avg")
 
         val_dataset = Sintel(split="training", dstype=dstype)
+        if args.small_data:
+            val_dataset._image_list = val_dataset._image_list[:200]
+            val_dataset._flow_list = val_dataset._flow_list[:200]
         sampler = torch.utils.data.distributed.DistributedSampler(val_dataset, shuffle=False, drop_last=False)
         val_loader = torch.utils.data.DataLoader(
             val_dataset,
@@ -111,7 +127,7 @@ def main(args):
 
     model.train()
 
-    train_dataset = get_train_dataset(args.train_dataset)
+    train_dataset = get_train_dataset(args.train_dataset, small_data=args.small_data)
 
     # TODO: Should drop_last really be True? And shouhld it be set in the loader instead of the sampler?
     sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, shuffle=True, drop_last=True)
@@ -147,12 +163,10 @@ def main(args):
     logger.add_meter("lr", tb_val="value", print=False)
     logger.add_meter("wdecay", tb_val="value", print=False)
     logger.add_meter("last_lr", tb_val="value")
-    logger.add_meter("flow_loss", tb_val="value")
-    logger.add_meter("1px", tb_val="value")
-    logger.add_meter("3px", tb_val="value")
-    logger.add_meter("5px", tb_val="value")
-
-    VAL_FREQ = 2  # validate every X epochs
+    logger.add_meter("flow_loss", tb_val="avg")
+    logger.add_meter("1px", tb_val="avg")
+    logger.add_meter("3px", tb_val="avg")
+    logger.add_meter("5px", tb_val="avg")
 
     done = False
     current_epoch = current_step = 0
@@ -192,8 +206,8 @@ def main(args):
                 done = True
                 break
 
-        logger.synchronize_between_processes()
-        print(f"Epoch {current_epoch} done. ", logger, force=True)
+        logger.synchronize_between_processes()  # FIXME: actually useless since we don't print the global avg
+        print(f"Epoch {current_epoch} done. ", logger)
 
         current_epoch += 1
         if args.num_epochs is not None and current_epoch == args.num_epochs:
@@ -203,7 +217,7 @@ def main(args):
             torch.save(model.state_dict(), Path(args.output_dir) / f"{args.name}_{current_epoch}.pth")
             torch.save(model.state_dict(), Path(args.output_dir) / f"{args.name}.pth")
 
-        if current_epoch % VAL_FREQ == 0:
+        if current_epoch % args.val_freq == 0 or done:
             model.eval()
 
             val_datasets = args.val_dataset or []
@@ -242,9 +256,12 @@ def get_args_parser(add_help=True):
 
     parser.add_argument("--iters", type=int, default=12)
     parser.add_argument("--wdecay", type=float, default=0.00005)
+    parser.add_argument("--val-freq", type=int, default=2)
     parser.add_argument("--epsilon", type=float, default=1e-8)
     parser.add_argument("--clip", type=float, default=1.0)
     parser.add_argument("--gamma", type=float, default=0.8, help="exponential weighting")
+
+    parser.add_argument("--small-data", action="store_true", help="use small data")
     return parser
 
 
