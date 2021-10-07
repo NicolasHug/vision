@@ -33,15 +33,6 @@ class FlowDataset(ABC, VisionDataset):
 
     def __getitem__(self, index):
 
-        # TODO: Do I need to keep this??
-        if not self.init_seed:
-            worker_info = torch.utils.data.get_worker_info()
-            if worker_info is not None:
-                torch.manual_seed(worker_info.id)
-                np.random.seed(worker_info.id)
-                random.seed(worker_info.id)
-                self.init_seed = True
-
         img1 = self._read_img(self._image_list[index][0])
         img2 = self._read_img(self._image_list[index][1])
         flow = self._read_flow(self._flow_list[index]).astype(np.float32)

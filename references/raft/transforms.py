@@ -104,13 +104,9 @@ class FlowAugmentor:
         return img1, img2, flow
 
     def __call__(self, img1, img2, flow):
-        print(img1.shape, img2.shape)
         img1, img2 = self.color_transform(img1, img2)
         img1, img2 = self.eraser_transform(img1, img2)
-        print(img1.shape, img2.shape)
         img1, img2, flow = self.spatial_transform(img1, img2, flow)
-        print(img1.shape, img2.shape)
-        print()
 
         img1 = np.ascontiguousarray(img1)
         img2 = np.ascontiguousarray(img2)
