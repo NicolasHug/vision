@@ -6,18 +6,13 @@ import torchvision.transforms.functional as F
 class FlowAugmentor(torch.nn.Module):
     # TODO: maybe common class with SparseAugmentor?
     def __init__(self, crop_size, min_scale=-0.2, max_scale=0.5, do_flip=True):
-
-        # # spatial augmentation params
-        # self.min_scale = min_scale
-        # self.max_scale = max_scale
-        # self.spatial_aug_prob = 0.8
-        # self.stretch_prob = 0.8
-        # self.max_stretch = 0.2
+        super().__init__()
 
         transforms = [
             AsymmetricColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.5 / 3.14, p=0.2),
             RandomApply([RandomErase()], p=0.5),
-            RandomResizedCrop(size=crop_size),
+            # RandomResizedCrop(size=crop_size),
+            MaybeResizeAndCrop(crop_size=crop_size, min_scale=min_scale, max_scale=max_scale),
         ]
 
         if do_flip:
@@ -82,6 +77,50 @@ class RandomVerticalFlip(T.RandomVerticalFlip):
         img1 = F.vflip(img1)
         img2 = F.vflip(img2)
         flow = F.vflip(flow) * torch.tensor([1, -1])[:, None, None]
+        return img1, img2, flow
+
+
+class MaybeResizeAndCrop(torch.nn.Module):
+    def __init__(self, crop_size, min_scale=-0.2, max_scale=0.5):
+        super().__init__()
+        self.crop_size = crop_size
+        self.min_scale = min_scale
+        self.max_scale = max_scale
+        self.spatial_aug_prob = 0.8
+        self.stretch_prob = 0.8
+        self.max_stretch = 0.2
+
+    def forward(self, img1, img2, flow):
+        # randomly sample scale
+        h, w = img1.shape[-2:]
+        min_scale = max((self.crop_size[0] + 8) / h, (self.crop_size[1] + 8) / w)
+
+        scale = 2 ** torch.FloatTensor(1).uniform_(self.min_scale, self.max_scale).item()
+        scale_x = scale
+        scale_y = scale
+        if torch.rand(1) < self.stretch_prob:
+            scale_x *= 2 ** torch.FloatTensor(1).uniform_(-self.max_stretch, self.max_stretch).item()
+            scale_y *= 2 ** torch.FloatTensor(1).uniform_(-self.max_stretch, self.max_stretch).item()
+
+        scale_x = max(scale_x, min_scale)
+        scale_y = max(scale_y, min_scale)
+
+        new_h, new_w = round(h * scale_y), round(w * scale_x)
+
+        if torch.rand(1).item() < self.spatial_aug_prob:
+            # rescale the images
+            img1 = F.resize(img1, size=(new_h, new_w))
+            img2 = F.resize(img2, size=(new_h, new_w))
+            flow = F.resize(flow, size=(new_h, new_w))
+            flow = flow * torch.tensor([scale_x, scale_y])[:, None, None]
+
+        y0 = torch.randint(0, img1.shape[1] - self.crop_size[0], size=(1,)).item()
+        x0 = torch.randint(0, img1.shape[2] - self.crop_size[1], size=(1,)).item()
+
+        img1 = img1[:, y0 : y0 + self.crop_size[0], x0 : x0 + self.crop_size[1]]
+        img2 = img2[:, y0 : y0 + self.crop_size[0], x0 : x0 + self.crop_size[1]]
+        flow = flow[:, y0 : y0 + self.crop_size[0], x0 : x0 + self.crop_size[1]]
+
         return img1, img2, flow
 
 
