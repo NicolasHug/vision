@@ -270,4 +270,8 @@ if __name__ == "__main__":
 
     Path(args.output_dir).mkdir(exist_ok=True)
 
+    # d = FlyingChairs(transforms=FlowAugmentor(crop_size=(368, 496), min_scale=0.1, max_scale=1.0, do_flip=True))
+    # for glob in d:
+    #     print(len(glob))
+
     main(args)

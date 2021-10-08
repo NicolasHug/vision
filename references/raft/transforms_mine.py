@@ -12,7 +12,8 @@ class FlowAugmentor(torch.nn.Module):
             AsymmetricColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.5 / 3.14, p=0.2),
             RandomApply([RandomErase()], p=0.5),
             # RandomResizedCrop(size=crop_size),
-            MaybeResizeAndCrop(crop_size=crop_size, min_scale=min_scale, max_scale=max_scale),
+            # MaybeResizeAndCrop(crop_size=crop_size, min_scale=min_scale, max_scale=max_scale),
+            Resize(size=crop_size),
         ]
 
         if do_flip:
@@ -135,6 +136,20 @@ class RandomResizedCrop(T.RandomResizedCrop):
         img1 = F.resized_crop(img1, i, j, h, w, self.size, self.interpolation)
         img2 = F.resized_crop(img2, i, j, h, w, self.size, self.interpolation)
         flow = F.resized_crop(flow, i, j, h, w, self.size, self.interpolation)
+
+        # We now need to scale the absolute flow values by the ratio of the crop
+        h_new, w_new = self.size
+        flow = flow * torch.tensor([h_new / h_orig, w_new / w_orig])[:, None, None]
+
+        return img1, img2, flow
+
+class Resize(T.Resize):
+    def forward(self, img1, img2, flow):
+        h_orig, w_orig = img1.shape[-2:]
+
+        img1 = F.resize(img1, self.size, self.interpolation, self.max_size, self.antialias)
+        img2 = F.resize(img2, self.size, self.interpolation, self.max_size, self.antialias)
+        flow = F.resize(flow, self.size, self.interpolation, self.max_size, self.antialias)
 
         # We now need to scale the absolute flow values by the ratio of the crop
         h_new, w_new = self.size
