@@ -4,7 +4,6 @@ import torchvision.transforms.functional as F
 
 
 class FlowAugmentor(torch.nn.Module):
-    # TODO: maybe common class with SparseAugmentor?
     def __init__(self, crop_size, min_scale=-0.2, max_scale=0.5, do_flip=True):
         super().__init__()
 
@@ -12,8 +11,8 @@ class FlowAugmentor(torch.nn.Module):
             AsymmetricColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.5 / 3.14, p=0.2),
             RandomApply([RandomErase()], p=0.5),
             # RandomResizedCrop(size=crop_size),
-            # MaybeResizeAndCrop(crop_size=crop_size, min_scale=min_scale, max_scale=max_scale),
-            Resize(size=crop_size),
+            MaybeResizeAndCrop(crop_size=crop_size, min_scale=min_scale, max_scale=max_scale),
+            # Resize(size=crop_size),
         ]
 
         if do_flip:

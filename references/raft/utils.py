@@ -37,7 +37,7 @@ class SmoothedValue(object):
         torch.distributed.all_reduce(t)
         t = t.tolist()
         self.count = int(t[0])
-        self.total = t[1]
+        self.total = float(t[1])
 
     def get_tb_val(self):
         # tells tensorboard what it should register
@@ -129,7 +129,7 @@ class MetricLogger(object):
             assert isinstance(v, (float, int))
             self.meters[k].update(v)
 
-    def log(self, iterable, header="", sync=False):
+    def log(self, iterable, header="", sync=False, verbose=True):
         start_time = time.time()
         end = time.time()
         iter_time = SmoothedValue(fmt="{avg:.4f}")
@@ -158,17 +158,18 @@ class MetricLogger(object):
                     self.synchronize_between_processes()
                 eta_seconds = iter_time.global_avg * (len(iterable) - i)
                 eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
-                print(
-                    log_msg.format(
-                        i,
-                        len(iterable),
-                        eta=eta_string,
-                        meters=str(self),
-                        time=str(iter_time),
-                        data=str(data_time),
-                        memory=torch.cuda.max_memory_allocated() / MB,
+                if verbose:
+                    print(
+                        log_msg.format(
+                            i,
+                            len(iterable),
+                            eta=eta_string,
+                            meters=str(self),
+                            time=str(iter_time),
+                            data=str(data_time),
+                            memory=torch.cuda.max_memory_allocated() / MB,
+                        )
                     )
-                )
 
                 for name, meter in self.meters.items():
                     self.tb_writer.add_scalar(f"{header} {name}", meter.get_tb_val(), self.current_step)

@@ -48,6 +48,7 @@ def validate_sintel(model, args, iters=32, small=False):
     # the dataset isn't divisible by the batch size.
 
     model.eval()
+
     for dstype in ["clean", "final"]:
         logger = MetricLogger(output_dir=args.output_dir)
         logger.add_meter("epe", fmt="{global_avg:.4f} ({value:.4f})", tb_val="global_avg")
@@ -68,25 +69,43 @@ def validate_sintel(model, args, iters=32, small=False):
             num_workers=args.num_workers,
         )
         header = f"Sintel val {dstype}"
-        for blob in logger.log(val_loader, header=header, sync=False):
 
-            image1, image2, flow_gt, _ = blob
+        num_samples = 0
+
+        def inner_loop(image1, image2, flow_gt):
             image1, image2 = image1.cuda(), image2.cuda()
 
             padder = InputPadder(image1.shape)
             image1, image2 = padder.pad(image1, image2)
 
             _, flow_pr = model(image1, image2, iters=iters, test_mode=True)
+
             flow = padder.unpad(flow_pr).cpu()
 
             epe = torch.sum((flow - flow_gt) ** 2, dim=1).sqrt()
 
-            logger.meters["epe"].update(epe.mean(), n=epe.numel())
+            logger.meters["epe"].update(epe.mean().item(), n=epe.numel())
             for distance in (1, 3, 5):
-                logger.meters[f"{distance}px"].update((epe < distance).float().mean(), n=epe.numel())
+                logger.meters[f"{distance}px"].update((epe < distance).float().mean().item(), n=epe.numel())
+
+        for blob in logger.log(val_loader, header=header, sync=False, verbose=False):
+            image1, image2, flow_gt, _ = blob
+            inner_loop(image1, image2, flow_gt)
+            num_samples += image1.shape[0]
+
+        num_samples = torch.tensor([num_samples], dtype=torch.float64, device="cuda")
+        torch.distributed.barrier()
+        torch.distributed.all_reduce(num_samples)
+        num_samples = int(num_samples.item())
+
+        if args.rank == 0:
+            for i in range(num_samples, len(val_dataset)):
+                image1, image2, flow_gt, _ = val_dataset[i]
+                inner_loop(image1[None, :, :, :], image2[None, :, :, :], flow_gt[None, :, :, :])
 
         logger.synchronize_between_processes()
         print(header, logger)
+
 
 
 def count_parameters(model):
@@ -110,7 +129,9 @@ def main(args):
         model.load_state_dict(torch.load(args.resume, map_location="cpu"), strict=False)
 
     # TODO: maybe, maybe not:
-    torch.backends.cudnn.benchmark = True
+    # Note: this adds randomness to the predictions and can impact the validation epe quite a bit.
+    # it also makes it non-reproducible lololololol
+    # torch.backends.cudnn.benchmark = True
 
     print("Parameter Count: %d" % count_parameters(model))
 
