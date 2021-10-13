@@ -32,11 +32,7 @@ class SmoothedValue(object):
         """
         Warning: does not synchronize the deque!
         """
-        if not is_dist_avail_and_initialized():
-            return
-        t = torch.tensor([self.count, self.total], dtype=torch.float64, device="cuda")
-        dist.barrier()
-        dist.all_reduce(t)
+        t = reduce_across_processes([self.count, self.total])
         t = t.tolist()
         self.count = int(t[0])
         self.total = t[1]
@@ -169,6 +165,16 @@ class ExponentialMovingAverage(torch.optim.swa_utils.AveragedModel):
     def __init__(self, model, decay, device="cpu"):
         ema_avg = lambda avg_model_param, model_param, num_averaged: decay * avg_model_param + (1 - decay) * model_param
         super().__init__(model, device, ema_avg)
+
+    def update_parameters(self, model):
+        for p_swa, p_model in zip(self.module.state_dict().values(), model.state_dict().values()):
+            device = p_swa.device
+            p_model_ = p_model.detach().to(device)
+            if self.n_averaged == 0:
+                p_swa.detach().copy_(p_model_)
+            else:
+                p_swa.detach().copy_(self.avg_fn(p_swa.detach(), p_model_, self.n_averaged.to(device)))
+        self.n_averaged += 1
 
 
 def accuracy(output, target, topk=(1,)):
@@ -386,3 +392,12 @@ def store_model_weights(model, checkpoint_path, checkpoint_key="model", strict=T
     os.replace(tmp_path, output_path)
 
     return output_path
+
+
+def reduce_across_processes(val):
+    if not is_dist_avail_and_initialized():
+        return val
+    t = torch.tensor(val, device="cuda")
+    dist.barrier()
+    dist.all_reduce(t)
+    return t
