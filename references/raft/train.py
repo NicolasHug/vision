@@ -60,7 +60,7 @@ def validate_sintel(model, args, iters=32, small=False):
         if args.small_data:
             val_dataset._image_list = val_dataset._image_list[:200]
             val_dataset._flow_list = val_dataset._flow_list[:200]
-        sampler = torch.utils.data.distributed.DistributedSampler(val_dataset, shuffle=False, drop_last=False)
+        sampler = torch.utils.data.distributed.DistributedSampler(val_dataset, shuffle=False, drop_last=True)
         val_loader = torch.utils.data.DataLoader(
             val_dataset,
             sampler=sampler,
@@ -97,6 +97,7 @@ def validate_sintel(model, args, iters=32, small=False):
         torch.distributed.barrier()
         torch.distributed.all_reduce(num_samples)
         num_samples = int(num_samples.item())
+        print(f"Evaluated {num_samples} / {len(val_dataset)} samples in batch")
 
         if args.rank == 0:
             for i in range(num_samples, len(val_dataset)):
@@ -116,8 +117,8 @@ def main(args):
     setup_ddp(args)
 
     # TODO: eventually remove
-    torch.manual_seed(1234)
-    np.random.seed(1234)
+    # torch.manual_seed(1234)
+    # np.random.seed(1234)
 
     print(args)
 
@@ -128,10 +129,7 @@ def main(args):
     if args.resume is not None:
         model.load_state_dict(torch.load(args.resume, map_location="cpu"), strict=False)
 
-    # TODO: maybe, maybe not:
-    # Note: this adds randomness to the predictions and can impact the validation epe quite a bit.
-    # it also makes it non-reproducible lololololol
-    # torch.backends.cudnn.benchmark = True
+    torch.backends.cudnn.benchmark = True
 
     print("Parameter Count: %d" % count_parameters(model))
 
@@ -139,7 +137,8 @@ def main(args):
         model.module.freeze_bn()
 
     if args.train_dataset is None:
-        # just validate then
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
         if args.val_dataset == ["sintel"]:
             validate_sintel(model, args)
         else:
@@ -223,7 +222,7 @@ def main(args):
 
             current_step += 1
 
-            if args.num_steps is not None and current_step == args.num_steps:
+            if current_step == args.num_steps:
                 done = True
                 break
 
@@ -231,7 +230,7 @@ def main(args):
         print(f"Epoch {current_epoch} done. ", logger)
 
         current_epoch += 1
-        if args.num_epochs is not None and current_epoch == args.num_epochs:
+        if current_epoch == args.num_epochs:
             done = True
 
         if args.rank == 0:
@@ -283,6 +282,8 @@ def get_args_parser(add_help=True):
     parser.add_argument("--gamma", type=float, default=0.8, help="exponential weighting")
 
     parser.add_argument("--small-data", action="store_true", help="use small data")
+
+    parser.add_argument("--dist-url", default="env://", help="url used to set up distributed training")
     return parser
 
 

@@ -256,7 +256,7 @@ def setup_ddp(args):
     # https://discuss.pytorch.org/t/what-is-the-difference-between-rank-and-local-rank/61940/2
 
     if all(key in os.environ for key in ("LOCAL_RANK", "RANK", "WORLD_SIZE")):
-        # if we're here, the script was called with torchhub. Otherwise
+        # if we're here, the script was called with torchrun. Otherwise
         # these args will be set already by the run_with_submitit script
         args.local_rank = int(os.environ["LOCAL_RANK"])
         args.rank = int(os.environ["RANK"])
@@ -275,5 +275,5 @@ def setup_ddp(args):
         backend="nccl",
         rank=args.rank,
         world_size=args.world_size,
-        init_method=args.dist_url if "dist_url" in args else "env://",
+        init_method=args.dist_url,
     )
