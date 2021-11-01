@@ -199,7 +199,7 @@ class KittiFlowDataset(FlowDataset):
             self._image_list += [[img1, img2]]
 
         if split == "training":
-            self.flow_list = sorted(glob(osp.join(root, "flow_occ/*_10.png")))
+            self._flow_list = sorted(glob(osp.join(root, "flow_occ/*_10.png")))
 
 
 class FlyingChairs(FlowDataset):

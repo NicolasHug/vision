@@ -246,7 +246,7 @@ class CorrBlock:
             corr = self.corr_pyramid[i]
             dx = torch.linspace(-r, r, 2 * r + 1)
             dy = torch.linspace(-r, r, 2 * r + 1)
-            delta = torch.stack(torch.meshgrid(dy, dx, indexing='ij'), axis=-1).to(coords.device)
+            delta = torch.stack(torch.meshgrid(dy, dx, indexing="ij"), axis=-1).to(coords.device)
 
             centroid_lvl = coords.reshape(batch * h1 * w1, 1, 1, 2) / 2 ** i
             delta_lvl = delta.view(1, 2 * r + 1, 2 * r + 1, 2)
@@ -333,12 +333,6 @@ class RAFT(nn.Module):
 
     def forward(self, image1, image2, iters=12, flow_init=None, upsample=True, test_mode=False):
         """Estimate optical flow between pair of frames"""
-
-        image1 = 2 * (image1 / 255.0) - 1.0
-        image2 = 2 * (image2 / 255.0) - 1.0
-
-        image1 = image1.contiguous()
-        image2 = image2.contiguous()
 
         hdim = self.hidden_dim
         cdim = self.context_dim

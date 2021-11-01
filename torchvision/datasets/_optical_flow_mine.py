@@ -10,6 +10,7 @@ import torch
 from PIL import Image
 
 from .. import transforms as T
+from ..io.image import _read_png_16
 from .vision import VisionDataset
 
 
@@ -29,28 +30,30 @@ class FlowDataset(ABC, VisionDataset):
 
     @abstractmethod
     def _read_flow(self, file_name):
+        # Return the flow or a tuple (flow, valid) for datasets where the valid mask is built-in
         pass
 
     def __getitem__(self, index):
+        # Some datasets like Kitti have a built-in valid mask, indicating which flow values are valid
+        # For those we return (img1, img2, flow, valid), and for the rest we return (img1, img2, flow),
+        # and it's up to whatever consumes the dataset to decide what `valid` should be.
 
         img1 = self._read_img(self._image_list[index][0])
         img2 = self._read_img(self._image_list[index][1])
-        flow = self._read_flow(self._flow_list[index]).astype(np.float32)
+        flow = self._read_flow(self._flow_list[index])
 
-        # TODO: hmmm should this be here??
-        img1 = T.PILToTensor()(img1)
-        img2 = T.PILToTensor()(img2)
-        flow = torch.from_numpy(flow).permute((2, 0, 1))
-
+        if isinstance(flow, tuple):
+            flow, valid = flow
+        else:
+            valid = None
+        
         if self.transforms is not None:
-            img1, img2, flow = self.transforms(img1, img2, flow)
+            img1, img2, flow, valid = self.transforms(img1, img2, flow, valid)
 
-        img1 = img1.float()
-        img2 = img2.float()
-        flow = flow.float()
-        valid = ((flow[0].abs() < 1000) & (flow[1].abs() < 1000)).float()
-
-        return img1, img2, flow, valid
+        if valid is None:
+            return img1, img2, flow
+        else:
+            return img1, img2, flow, valid
 
     def __len__(self):
         return len(self._image_list)
@@ -113,6 +116,7 @@ class FlyingThings3D(FlowDataset):
     def _read_flow(self, file_name):
         flow = _read_pfm(file_name).astype(np.float32)
         if len(flow.shape) == 2:
+            # TODO: maybe remove this
             raise ValueError("Does this ever happen??????????????????")
             # return flow
         else:
@@ -133,8 +137,8 @@ class Sintel(FlowDataset):
         flow_root = osp.join(root, split, "flow")
         image_root = osp.join(root, split, dstype)
 
-        if split == "test":
-            self.is_test = True
+        # if split == "test":
+        #     self.is_test = True
 
         for scene in os.listdir(image_root):
             image_list = sorted(glob(osp.join(image_root, scene, "*.png")))
@@ -147,6 +151,32 @@ class Sintel(FlowDataset):
 
     def _read_flow(self, file_name):
         return _read_flo(file_name)
+
+
+class KittiFlowDataset(FlowDataset):
+    def __init__(
+        self,
+        root="/data/home/nicolashug/cluster/work/downloads/kitti",
+        split="training",
+        transforms=None,
+    ):
+        super().__init__(root=root, transforms=transforms)
+
+        # if split == 'testing':
+        #     self.is_test = True
+
+        root = osp.join(root, split)
+        images1 = sorted(glob(osp.join(root, "image_2/*_10.png")))
+        images2 = sorted(glob(osp.join(root, "image_2/*_11.png")))
+
+        for img1, img2 in zip(images1, images2):
+            self._image_list += [[img1, img2]]
+
+        if split == "training":
+            self._flow_list = sorted(glob(osp.join(root, "flow_occ/*_10.png")))
+
+    def _read_flow(self, file_name):
+        return _read_16bits_png_with_flow_and_valid_mask(file_name)
 
 
 def _read_flo(file_name):
@@ -206,9 +236,13 @@ def _read_pfm(file_name):
 
     data = np.reshape(data, shape)
     data = np.flipud(data)
-    return data
+    return data.astype(np.float32)
 
 
-class KittiFlowDataset:
-    pass
-    # TODO: remove
+def _read_16bits_png_with_flow_and_valid_mask(file_name):
+
+    flow_and_valid = _read_png_16(file_name).to(torch.float32)
+    flow, valid = flow_and_valid[:2, :, :], flow_and_valid[2, :, :]
+    flow = (flow - 2 ** 15) / 64  # This conversion is explained somewhere on the kitti archive
+
+    return flow, valid

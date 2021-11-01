@@ -8,13 +8,13 @@ from torchvision.datasets import KittiFlowDataset, FlyingChairs, FlyingThings3D,
 from torchvision.models.video import RAFT
 
 # from transforms import FlowAugmentor, SparseFlowAugmentor
-from transforms_mine import FlowAugmentor, SparseFlowAugmentor
+from transforms_mine import FlowAugmentor, SparseFlowAugmentor, PresetEval
 from utils import MetricLogger, setup_ddp, sequence_loss, InputPadder
 
 
 def get_train_dataset(dataset_name, small_data=False):
     d = {
-        # "kitti": KittiFlowDataset,
+        "kitti": KittiFlowDataset,
         "chairs": FlyingChairs,
         "things": FlyingThings3D,
         "sintel": Sintel,
@@ -56,7 +56,7 @@ def validate_sintel(model, args, iters=32, small=False):
         logger.add_meter("3px", fmt="{global_avg:.4f} ({value:.4f})", tb_val="global_avg")
         logger.add_meter("5px", fmt="{global_avg:.4f} ({value:.4f})", tb_val="global_avg")
 
-        val_dataset = Sintel(split="training", dstype=dstype)
+        val_dataset = Sintel(split="training", dstype=dstype, transforms=PresetEval())
         if args.small_data:
             val_dataset._image_list = val_dataset._image_list[:200]
             val_dataset._flow_list = val_dataset._flow_list[:200]
@@ -89,7 +89,7 @@ def validate_sintel(model, args, iters=32, small=False):
                 logger.meters[f"{distance}px"].update((epe < distance).float().mean().item(), n=epe.numel())
 
         for blob in logger.log(val_loader, header=header, sync=False, verbose=False):
-            image1, image2, flow_gt, _ = blob
+            image1, image2, flow_gt = blob
             inner_loop(image1, image2, flow_gt)
             num_samples += image1.shape[0]
 
@@ -101,12 +101,11 @@ def validate_sintel(model, args, iters=32, small=False):
 
         if args.rank == 0:
             for i in range(num_samples, len(val_dataset)):
-                image1, image2, flow_gt, _ = val_dataset[i]
+                image1, image2, flow_gt = val_dataset[i]
                 inner_loop(image1[None, :, :, :], image2[None, :, :, :], flow_gt[None, :, :, :])
 
         logger.synchronize_between_processes()
         print(header, logger)
-
 
 
 def count_parameters(model):
@@ -198,7 +197,14 @@ def main(args):
 
             # TODO: set p.grad = None instead? see https://twitter.com/karpathy/status/1299921324333170689/photo/1
             optimizer.zero_grad()
-            image1, image2, flow, valid = [x.to(args.local_rank) for x in data_blob]
+
+            if len(data_blob) == 4:
+                image1, image2, flow, valid = data_blob
+            else:
+                image1, image2, flow = data_blob
+                valid = ((flow[0].abs() < 1000) & (flow[1].abs() < 1000)).float()
+
+            image1, image2, flow, valid = [x.cuda() for x in (image1, image2, flow, valid)]
 
             # print(f"I'm rank {args.rank} and I'm getting {image1[0][0][20][100]} as a given pixel value, {image1.shape = }", force=True)
 
@@ -295,5 +301,21 @@ if __name__ == "__main__":
     # d = FlyingChairs(transforms=FlowAugmentor(crop_size=(368, 496), min_scale=0.1, max_scale=1.0, do_flip=True))
     # for glob in d:
     #     print(len(glob))
+    #     print([x.dtype for x in glob])
+
+    # from torchvision.datasets._optical_flow import KittiFlowDataset as K
+    # dd = K()
+
+    # d = KittiFlowDataset(transforms=FlowAugmentor(crop_size=(368, 496), min_scale=0.1, max_scale=1.0, do_flip=True))
+    # for glob in d:
+    #     print(len(glob))
+
+    # for glob, glob2 in zip(d, dd):
+    #     print(len(glob))
+    #     flow1, flow2 = glob[2], glob2[2]
+    #     torch.testing.assert_close(flow1, flow2)
+    #     print(flow2.min(), flow2.max(), flow2.dtype, flow2.shape)
+    #     print(flow1.min(), flow1.max(), flow1.dtype, flow1.shape)
+
 
     main(args)
