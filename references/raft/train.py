@@ -21,7 +21,7 @@ def get_train_dataset(dataset_name, small_data=False):
     }
 
     transforms = {
-        # "kitti": SparseFlowAugmentor(crop_size=(288, 960), min_scale=-0.2, max_scale=0.4, do_flip=False),
+        "kitti": FlowAugmentor(crop_size=(288, 960), min_scale=-0.2, max_scale=0.4, do_flip=False, stretch_prob=0),
         "chairs": FlowAugmentor(crop_size=(368, 496), min_scale=0.1, max_scale=1.0, do_flip=True),
         "things": FlowAugmentor(crop_size=(400, 720), min_scale=-0.4, max_scale=0.8, do_flip=True),
         "sintel": FlowAugmentor(crop_size=(368, 768), min_scale=-0.2, max_scale=0.6, do_flip=True),
@@ -115,10 +115,6 @@ def count_parameters(model):
 def main(args):
     setup_ddp(args)
 
-    # TODO: eventually remove
-    # torch.manual_seed(1234)
-    # np.random.seed(1234)
-
     print(args)
 
     model = RAFT(args)  # TODO: pass better args
@@ -202,7 +198,7 @@ def main(args):
                 image1, image2, flow, valid = data_blob
             else:
                 image1, image2, flow = data_blob
-                valid = ((flow[0].abs() < 1000) & (flow[1].abs() < 1000)).float()
+                valid = ((flow[:, 0, :, :].abs() < 1000) & (flow[:, 1, :, :].abs() < 1000)).float()
 
             image1, image2, flow, valid = [x.cuda() for x in (image1, image2, flow, valid)]
 
@@ -307,6 +303,7 @@ if __name__ == "__main__":
     # dd = K()
 
     # d = KittiFlowDataset(transforms=FlowAugmentor(crop_size=(368, 496), min_scale=0.1, max_scale=1.0, do_flip=True))
+    # d = KittiFlowDataset()
     # for glob in d:
     #     print(len(glob))
 

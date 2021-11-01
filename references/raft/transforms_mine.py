@@ -21,7 +21,7 @@ class PresetEval(torch.nn.Module):
 
 
 class FlowAugmentor(torch.nn.Module):
-    def __init__(self, crop_size, min_scale=-0.2, max_scale=0.5, do_flip=True):
+    def __init__(self, crop_size, min_scale=-0.2, max_scale=0.5, do_flip=True, stretch_prob=0.8):
         super().__init__()
 
         transforms = [
@@ -30,7 +30,9 @@ class FlowAugmentor(torch.nn.Module):
                 brightness=0.4, contrast=0.4, saturation=0.4, hue=0.5 / 3.14, p=0.2
             ),  # TODO: these are different for sparse
             RandomApply([RandomErase()], p=0.5),
-            MaybeResizeAndCrop(crop_size=crop_size, min_scale=min_scale, max_scale=max_scale),
+            MaybeResizeAndCrop(
+                crop_size=crop_size, min_scale=min_scale, max_scale=max_scale, stretch_prob=stretch_prob
+            ),
         ]
 
         if do_flip:
@@ -139,24 +141,28 @@ class RandomVerticalFlip(T.RandomVerticalFlip):
 
 
 class MaybeResizeAndCrop(torch.nn.Module):
-    def __init__(self, crop_size, min_scale=-0.2, max_scale=0.5):
+    def __init__(self, crop_size, min_scale=-0.2, max_scale=0.5, stretch_prob=0.8):
         super().__init__()
         self.crop_size = crop_size
         self.min_scale = min_scale
         self.max_scale = max_scale
+        self.stretch_prob = stretch_prob
         self.spatial_aug_prob = 0.8
-        self.stretch_prob = 0.8
         self.max_stretch = 0.2
 
     def forward(self, img1, img2, flow, valid):
         # randomly sample scale
         h, w = img1.shape[-2:]
+        # Note: in original code, they use + 1 instead of + 8 for sparse datasets (e.g. Kitti)
+        # It shouldn't matter much
         min_scale = max((self.crop_size[0] + 8) / h, (self.crop_size[1] + 8) / w)
 
         scale = 2 ** torch.FloatTensor(1).uniform_(self.min_scale, self.max_scale).item()
         scale_x = scale
         scale_y = scale
         if torch.rand(1) < self.stretch_prob:
+            # Leaving this here while I work on Kitti
+            raise ValueError("We have a problem Kitti")
             scale_x *= 2 ** torch.FloatTensor(1).uniform_(-self.max_stretch, self.max_stretch).item()
             scale_y *= 2 ** torch.FloatTensor(1).uniform_(-self.max_stretch, self.max_stretch).item()
 
@@ -169,18 +175,58 @@ class MaybeResizeAndCrop(torch.nn.Module):
             # rescale the images
             img1 = F.resize(img1, size=(new_h, new_w))
             img2 = F.resize(img2, size=(new_h, new_w))
-            flow = F.resize(flow, size=(new_h, new_w))
-            #  TODO : HANDLE VALID HERE
-            flow = flow * torch.tensor([scale_x, scale_y])[:, None, None]
+            if valid is None:
+                flow = F.resize(flow, size=(new_h, new_w))
+                flow = flow * torch.tensor([scale_x, scale_y])[:, None, None]
+            else:
+                flow, valid = self._resize_sparse_flow(flow, valid, scale_x=scale_x, scale_y=scale_y)
 
+        # Note: For sparse datasets (Kitti), the original code uses a margin
         y0 = torch.randint(0, img1.shape[1] - self.crop_size[0], size=(1,)).item()
         x0 = torch.randint(0, img1.shape[2] - self.crop_size[1], size=(1,)).item()
 
         img1 = img1[:, y0 : y0 + self.crop_size[0], x0 : x0 + self.crop_size[1]]
         img2 = img2[:, y0 : y0 + self.crop_size[0], x0 : x0 + self.crop_size[1]]
         flow = flow[:, y0 : y0 + self.crop_size[0], x0 : x0 + self.crop_size[1]]
+        if valid is not None:
+            valid = valid[y0 : y0 + self.crop_size[0], x0 : x0 + self.crop_size[1]]
 
         return img1, img2, flow, valid
+
+    def _resize_sparse_flow(self, flow, valid, scale_x=1.0, scale_y=1.0):
+        # This resizes both the flow and the valid mask (which is assumed to be reasonably sparse)
+        # There are as-many non-zero values in the original flow as in the resized flow (up to OOB)
+
+        h, w = flow.shape[-2:]
+
+        h_new = int(round(h * scale_y))
+        w_new = int(round(w * scale_x))
+        flow_new = torch.zeros(size=[2, h_new, w_new], dtype=flow.dtype)
+        valid_new = torch.zeros(size=[h_new, w_new], dtype=valid.dtype)
+
+        jj, ii = torch.meshgrid(torch.arange(w), torch.arange(h), indexing="xy")
+
+        valid_bool = valid.to(bool)
+        ii_valid, jj_valid = ii[valid_bool], jj[valid_bool]
+
+        ii_valid_new = torch.round(ii_valid.to(float) * scale_y).to(torch.long)
+        jj_valid_new = torch.round(jj_valid.to(float) * scale_x).to(torch.long)
+
+        within_bounds_mask = (0 <= ii_valid_new) & (ii_valid_new < h_new) & (0 <= jj_valid_new) & (jj_valid_new < w_new)
+
+        ii_valid = ii_valid[within_bounds_mask]
+        jj_valid = jj_valid[within_bounds_mask]
+        ii_valid_new = ii_valid_new[within_bounds_mask]
+        jj_valid_new = jj_valid_new[within_bounds_mask]
+
+        valid_flow_new = flow[:, ii_valid, jj_valid]
+        valid_flow_new[0] *= scale_x
+        valid_flow_new[1] *= scale_y
+
+        flow_new[:, ii_valid_new, jj_valid_new] = valid_flow_new
+        valid_new[ii_valid_new, jj_valid_new] = 1
+
+        return flow_new, valid_new
 
 
 class RandomApply(T.RandomApply):
