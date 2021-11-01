@@ -8,11 +8,14 @@ class PresetEval(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.transforms = Compose([
-            ToTensor(),
-            Scale(),
-            CheckDtype(),
-        ])
+        self.transforms = Compose(
+            [
+                ToTensor(),
+                Scale(),
+                CheckDtype(),
+            ]
+        )
+
     def __call__(self, img1, img2, flow, valid):
         return self.transforms(img1, img2, flow, valid)
 
@@ -23,7 +26,9 @@ class FlowAugmentor(torch.nn.Module):
 
         transforms = [
             ToTensor(),
-            AsymmetricColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.5 / 3.14, p=0.2),  # TODO: these are different for sparse
+            AsymmetricColorJitter(
+                brightness=0.4, contrast=0.4, saturation=0.4, hue=0.5 / 3.14, p=0.2
+            ),  # TODO: these are different for sparse
             RandomApply([RandomErase()], p=0.5),
             MaybeResizeAndCrop(crop_size=crop_size, min_scale=min_scale, max_scale=max_scale),
         ]
@@ -47,6 +52,7 @@ class CheckDtype(torch.nn.Module):
         assert all(x.dtype == self.dtype for x in args if x is not None)
         return args
 
+
 class Scale(torch.nn.Module):
     # TODO: find a better name
     # ALso: Calling this before converting the images to cuda seems to affect epe quite a bit
@@ -60,6 +66,7 @@ class Scale(torch.nn.Module):
 
         return img1, img2, flow, valid
 
+
 class ToTensor(torch.nn.Module):
     def forward(self, img1, img2, flow, valid):
         img1 = F.pil_to_tensor(img1)
@@ -67,9 +74,9 @@ class ToTensor(torch.nn.Module):
 
         if isinstance(flow, np.ndarray):
             flow = torch.from_numpy(flow).permute((2, 0, 1))
-        
+
         return img1, img2, flow, valid
-        
+
 
 class AsymmetricColorJitter(T.ColorJitter):
     def __init__(self, brightness=0, contrast=0, saturation=0, hue=0, p=0.2):

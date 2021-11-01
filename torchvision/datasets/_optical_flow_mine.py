@@ -46,7 +46,7 @@ class FlowDataset(ABC, VisionDataset):
             flow, valid = flow
         else:
             valid = None
-        
+
         if self.transforms is not None:
             img1, img2, flow, valid = self.transforms(img1, img2, flow, valid)
 
