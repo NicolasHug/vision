@@ -153,6 +153,20 @@ class RandomVerticalFlip(T.RandomVerticalFlip):
 
 
 class MaybeResizeAndCrop(torch.nn.Module):
+    # This transform will resize the input with a given proba, and then crop it.
+    # These are the reversed operations of the built-in RandomResizedCrop,
+    # although the order of the operations doesn't matter too much.
+    # The reason we don't rely on RandomResizedCrop is because of a significant
+    # difference in the parametrization of both transforms.
+    # 
+    # There *is* a mapping between the inputs of MaybeResizeAndCrop and those of
+    # RandomResizedCrop, but the issue is that the parameters are sampled at
+    # random, with different distributions. Plotting (the equivalent of) `scale`
+    # and `ratio` from MaybeResizeAndCrop shows that the distributions of these
+    # parameter are very different from what can be obtained from the
+    # parametrization of RandomResizedCrop. I tried training RAFT by using
+    # RandomResizedCrop and tweaking the parameters a bit, but couldn't get
+    # an epe as good as with MaybeResizeAndCrop.
     def __init__(self, crop_size, min_scale=-0.2, max_scale=0.5, stretch_prob=0.8):
         super().__init__()
         self.crop_size = crop_size
