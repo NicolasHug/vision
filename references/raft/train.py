@@ -3,7 +3,7 @@ from pathlib import Path
 
 import torch
 from torch.cuda.amp import GradScaler
-from torchvision.datasets import KittiFlowDataset, FlyingChairs, FlyingThings3D, Sintel
+from torchvision.datasets import KittiFlow, FlyingChairs, FlyingThings3D, Sintel
 from torchvision.models.video import RAFT
 
 from presets import OpticalFlowPresetTrain, OpticalFlowPresetEval
@@ -12,7 +12,7 @@ from utils import MetricLogger, setup_ddp, sequence_loss, InputPadder
 
 def get_train_dataset(dataset_name, small_data=False):
     d = {
-        "kitti": KittiFlowDataset,
+        "kitti": KittiFlow,
         "chairs": FlyingChairs,
         "things": FlyingThings3D,
         "sintel": Sintel,
