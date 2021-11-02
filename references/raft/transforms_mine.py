@@ -21,14 +21,26 @@ class PresetEval(torch.nn.Module):
 
 
 class FlowAugmentor(torch.nn.Module):
-    def __init__(self, crop_size, min_scale=-0.2, max_scale=0.5, do_flip=True, stretch_prob=0.8):
+    def __init__(
+        self,
+        crop_size,
+        min_scale=-0.2,
+        max_scale=0.5,
+        stretch_prob=0.8,
+        brightness=0.4,
+        contrast=0.4,
+        saturation=0.4,
+        hue=0.5 / 3.14,
+        asymmetric_jitter_prob=0.2,
+        do_flip=True,
+    ):
         super().__init__()
 
         transforms = [
             ToTensor(),
             AsymmetricColorJitter(
-                brightness=0.4, contrast=0.4, saturation=0.4, hue=0.5 / 3.14, p=0.2
-            ),  # TODO: these are different for sparse
+                brightness=brightness, contrast=contrast, saturation=saturation, hue=hue, p=asymmetric_jitter_prob
+            ),
             RandomApply([RandomErase()], p=0.5),
             MaybeResizeAndCrop(
                 crop_size=crop_size, min_scale=min_scale, max_scale=max_scale, stretch_prob=stretch_prob
@@ -88,11 +100,11 @@ class AsymmetricColorJitter(T.ColorJitter):
     def forward(self, img1, img2, flow, valid):
 
         if torch.rand(1) < self.p:
-            # asymmetric
+            # asymmetric: different transform for img1 and img2
             img1 = super().forward(img1)
             img2 = super().forward(img2)
         else:
-            # symmetric
+            # symmetric: same transform for img1 and img2
             batch = torch.stack([img1, img2])
             batch = super().forward(batch)
             img1, img2 = batch[0], batch[1]
@@ -147,7 +159,7 @@ class MaybeResizeAndCrop(torch.nn.Module):
         self.min_scale = min_scale
         self.max_scale = max_scale
         self.stretch_prob = stretch_prob
-        self.spatial_aug_prob = 0.8
+        self.resize_prob = 0.8
         self.max_stretch = 0.2
 
     def forward(self, img1, img2, flow, valid):
@@ -161,8 +173,6 @@ class MaybeResizeAndCrop(torch.nn.Module):
         scale_x = scale
         scale_y = scale
         if torch.rand(1) < self.stretch_prob:
-            # Leaving this here while I work on Kitti
-            raise ValueError("We have a problem Kitti")
             scale_x *= 2 ** torch.FloatTensor(1).uniform_(-self.max_stretch, self.max_stretch).item()
             scale_y *= 2 ** torch.FloatTensor(1).uniform_(-self.max_stretch, self.max_stretch).item()
 
@@ -171,7 +181,7 @@ class MaybeResizeAndCrop(torch.nn.Module):
 
         new_h, new_w = round(h * scale_y), round(w * scale_x)
 
-        if torch.rand(1).item() < self.spatial_aug_prob:
+        if torch.rand(1).item() < self.resize_prob:
             # rescale the images
             img1 = F.resize(img1, size=(new_h, new_w))
             img2 = F.resize(img2, size=(new_h, new_w))
@@ -181,7 +191,9 @@ class MaybeResizeAndCrop(torch.nn.Module):
             else:
                 flow, valid = self._resize_sparse_flow(flow, valid, scale_x=scale_x, scale_y=scale_y)
 
-        # Note: For sparse datasets (Kitti), the original code uses a margin
+        # Note: For sparse datasets (Kitti), the original code uses a "margin"
+        # See e.g. https://github.com/princeton-vl/RAFT/blob/master/core/utils/augmentor.py#L220:L220
+        # We don't, not sure it matters much
         y0 = torch.randint(0, img1.shape[1] - self.crop_size[0], size=(1,)).item()
         x0 = torch.randint(0, img1.shape[2] - self.crop_size[1], size=(1,)).item()
 
@@ -196,6 +208,7 @@ class MaybeResizeAndCrop(torch.nn.Module):
     def _resize_sparse_flow(self, flow, valid, scale_x=1.0, scale_y=1.0):
         # This resizes both the flow and the valid mask (which is assumed to be reasonably sparse)
         # There are as-many non-zero values in the original flow as in the resized flow (up to OOB)
+        # So for example if scale_x = scale_y = 2, the sparsity of the output flow is multiplied by 4
 
         h, w = flow.shape[-2:]
 

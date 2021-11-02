@@ -21,7 +21,21 @@ def get_train_dataset(dataset_name, small_data=False):
     }
 
     transforms = {
-        "kitti": FlowAugmentor(crop_size=(288, 960), min_scale=-0.2, max_scale=0.4, do_flip=False, stretch_prob=0),
+        "kitti": FlowAugmentor(
+            # resize and crop params
+            crop_size=(288, 960),
+            min_scale=-0.2,
+            max_scale=0.4,
+            stretch_prob=0,
+            # flip params
+            do_flip=False,
+            # jitter params
+            brightness=0.3,
+            contrast=0.3,
+            saturation=0.3,
+            hue=0.3 / 3.14,
+            asymmetric_jitter_prob=0,
+        ),
         "chairs": FlowAugmentor(crop_size=(368, 496), min_scale=0.1, max_scale=1.0, do_flip=True),
         "things": FlowAugmentor(crop_size=(400, 720), min_scale=-0.4, max_scale=0.8, do_flip=True),
         "sintel": FlowAugmentor(crop_size=(368, 768), min_scale=-0.2, max_scale=0.6, do_flip=True),
