@@ -105,7 +105,7 @@ class MaybeResizeAndCrop(torch.nn.Module):
     # although the order of the operations doesn't matter too much.
     # The reason we don't rely on RandomResizedCrop is because of a significant
     # difference in the parametrization of both transforms.
-    # 
+    #
     # There *is* a mapping between the inputs of MaybeResizeAndCrop and those of
     # RandomResizedCrop, but the issue is that the parameters are sampled at
     # random, with different distributions. Plotting (the equivalent of) `scale`

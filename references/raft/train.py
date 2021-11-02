@@ -2,11 +2,10 @@ import argparse
 from pathlib import Path
 
 import torch
+from presets import OpticalFlowPresetTrain, OpticalFlowPresetEval
 from torch.cuda.amp import GradScaler
 from torchvision.datasets import KittiFlow, FlyingChairs, FlyingThings3D, Sintel
 from torchvision.models.video import RAFT
-
-from presets import OpticalFlowPresetTrain, OpticalFlowPresetEval
 from utils import MetricLogger, setup_ddp, sequence_loss, InputPadder
 
 
@@ -68,7 +67,7 @@ def validate_sintel(model, args, iters=32, small=False):
         logger.add_meter("3px", fmt="{global_avg:.4f} ({value:.4f})", tb_val="global_avg")
         logger.add_meter("5px", fmt="{global_avg:.4f} ({value:.4f})", tb_val="global_avg")
 
-        val_dataset = Sintel(split="training", dstype=dstype, transforms=PresetEval())
+        val_dataset = Sintel(split="training", dstype=dstype, transforms=OpticalFlowPresetEval())
         if args.small_data:
             val_dataset._image_list = val_dataset._image_list[:200]
             val_dataset._flow_list = val_dataset._flow_list[:200]
@@ -314,8 +313,8 @@ if __name__ == "__main__":
     # from torchvision.datasets._optical_flow import KittiFlowDataset as K
     # dd = K()
 
-    # d = KittiFlowDataset(transforms=FlowAugmentor(crop_size=(368, 496), min_scale=0.1, max_scale=1.0, do_flip=True))
-    # d = KittiFlowDataset()
+    # d = KittiFlow(transforms=FlowAugmentor(crop_size=(368, 496), min_scale=0.1, max_scale=1.0, do_flip=True))
+    # d = KittiFlow(split="testing")
     # for glob in d:
     #     print(len(glob))
 

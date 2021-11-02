@@ -1,8 +1,8 @@
 import os
-import os.path as osp
 import re
 from abc import ABC, abstractmethod
 from glob import glob
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -27,7 +27,6 @@ class FlowDataset(ABC, VisionDataset):
         super().__init__(root=root)
         self.transforms = transforms
 
-        self.init_seed = False
         self._flow_list = []
         self._image_list = []
         self._extra_info = []
@@ -75,13 +74,14 @@ class FlyingChairs(FlowDataset):
     ):
         super().__init__(root=root, transforms=transforms)
 
-        images = sorted(glob(osp.join(root, "data/*.ppm")))  # TODO: os.sep
-        flows = sorted(glob(osp.join(root, "data/*.flo")))
+        root = Path(root)
+        images = sorted(glob(str(root / "data" / "*.ppm")))
+        flows = sorted(glob(str(root / "data" / "*.flo")))
         assert len(images) // 2 == len(flows)
 
         # TODO: this file is not part of the original dataset, it comes from RAFT repo
         # change this. Hardcode splits when downloading the dataset?
-        split_list = np.loadtxt(osp.join(root, "chairs_split.txt"), dtype=np.int32)
+        split_list = np.loadtxt(str(root / "chairs_split.txt"), dtype=np.int32)
         for i in range(len(flows)):
             xid = split_list[i]
             if (split == "training" and xid == 1) or (split == "validation" and xid == 2):
@@ -101,17 +101,18 @@ class FlyingThings3D(FlowDataset):
     ):
         super().__init__(root=root, transforms=transforms)
 
+        root = Path(root)
         cam = "left"  # TODO: Use both cams?
         for direction in ["into_future", "into_past"]:
-            image_dirs = sorted(glob(osp.join(root, dstype, "TRAIN/*/*")))
-            image_dirs = sorted([osp.join(f, cam) for f in image_dirs])
+            image_dirs = sorted(glob(str(root / dstype / "TRAIN" / "*/*")))
+            image_dirs = sorted([Path(image_dir) / cam for image_dir in image_dirs])
 
-            flow_dirs = sorted(glob(osp.join(root, "optical_flow/TRAIN/*/*")))
-            flow_dirs = sorted([osp.join(f, direction, cam) for f in flow_dirs])
+            flow_dirs = sorted(glob(str(root / "optical_flow" / "TRAIN" / "*/*")))
+            flow_dirs = sorted([Path(flow_dir) / direction / cam for flow_dir in flow_dirs])
 
-            for idir, fdir in zip(image_dirs, flow_dirs):
-                images = sorted(glob(osp.join(idir, "*.png")))
-                flows = sorted(glob(osp.join(fdir, "*.pfm")))
+            for image_dir, flow_dir in zip(image_dirs, flow_dirs):
+                images = sorted(glob(str(image_dir / "*.png")))
+                flows = sorted(glob(str(flow_dir / "*.pfm")))
                 for i in range(len(flows) - 1):
                     if direction == "into_future":
                         self._image_list += [[images[i], images[i + 1]]]
@@ -134,27 +135,24 @@ class Sintel(FlowDataset):
     def __init__(
         self,
         root="/data/home/nicolashug/cluster/work/downloads/Sintel",
-        split="training",  # TODO: remove??
+        split="training",
         dstype="clean",
         transforms=None,
     ):
 
         super().__init__(root=root, transforms=transforms)
 
-        flow_root = osp.join(root, split, "flow")
-        image_root = osp.join(root, split, dstype)
-
-        # if split == "test":
-        #     self.is_test = True
+        flow_root = Path(root) / split / "flow"
+        image_root = Path(root) / split / dstype
 
         for scene in os.listdir(image_root):
-            image_list = sorted(glob(osp.join(image_root, scene, "*.png")))
+            image_list = sorted(glob(str(image_root / scene / "*.png")))
             for i in range(len(image_list) - 1):
                 self._image_list += [[image_list[i], image_list[i + 1]]]
                 self._extra_info += [(scene, i)]  # scene and frame_id
 
             if split != "test":
-                self._flow_list += sorted(glob(osp.join(flow_root, scene, "*.flo")))
+                self._flow_list += sorted(glob(str(flow_root / scene / "*.flo")))
 
     def _read_flow(self, file_name):
         return _read_flo(file_name)
@@ -169,18 +167,15 @@ class KittiFlow(FlowDataset):
     ):
         super().__init__(root=root, transforms=transforms)
 
-        # if split == 'testing':
-        #     self.is_test = True
-
-        root = osp.join(root, split)
-        images1 = sorted(glob(osp.join(root, "image_2/*_10.png")))
-        images2 = sorted(glob(osp.join(root, "image_2/*_11.png")))
+        root = Path(root) / split
+        images1 = sorted(glob(str(root / "image_2" / "*_10.png")))
+        images2 = sorted(glob(str(root / "image_2" / "*_11.png")))
 
         for img1, img2 in zip(images1, images2):
             self._image_list += [[img1, img2]]
 
         if split == "training":
-            self._flow_list = sorted(glob(osp.join(root, "flow_occ/*_10.png")))
+            self._flow_list = sorted(glob(str(root / "flow_occ" / "*_10.png")))
 
     def _read_flow(self, file_name):
         return _read_16bits_png_with_flow_and_valid_mask(file_name)
