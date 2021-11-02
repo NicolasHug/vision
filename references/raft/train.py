@@ -1,14 +1,12 @@
 import argparse
 from pathlib import Path
 
-import numpy as np
 import torch
 from torch.cuda.amp import GradScaler
 from torchvision.datasets import KittiFlowDataset, FlyingChairs, FlyingThings3D, Sintel
 from torchvision.models.video import RAFT
 
-# from transforms import FlowAugmentor, SparseFlowAugmentor
-from transforms_mine import FlowAugmentor, SparseFlowAugmentor, PresetEval
+from presets import OpticalFlowPresetTrain, OpticalFlowPresetEval
 from utils import MetricLogger, setup_ddp, sequence_loss, InputPadder
 
 
@@ -21,7 +19,7 @@ def get_train_dataset(dataset_name, small_data=False):
     }
 
     transforms = {
-        "kitti": FlowAugmentor(
+        "kitti": OpticalFlowPresetTrain(
             # resize and crop params
             crop_size=(288, 960),
             min_scale=-0.2,
@@ -36,9 +34,9 @@ def get_train_dataset(dataset_name, small_data=False):
             hue=0.3 / 3.14,
             asymmetric_jitter_prob=0,
         ),
-        "chairs": FlowAugmentor(crop_size=(368, 496), min_scale=0.1, max_scale=1.0, do_flip=True),
-        "things": FlowAugmentor(crop_size=(400, 720), min_scale=-0.4, max_scale=0.8, do_flip=True),
-        "sintel": FlowAugmentor(crop_size=(368, 768), min_scale=-0.2, max_scale=0.6, do_flip=True),
+        "chairs": OpticalFlowPresetTrain(crop_size=(368, 496), min_scale=0.1, max_scale=1.0, do_flip=True),
+        "things": OpticalFlowPresetTrain(crop_size=(400, 720), min_scale=-0.4, max_scale=0.8, do_flip=True),
+        "sintel": OpticalFlowPresetTrain(crop_size=(368, 768), min_scale=-0.2, max_scale=0.6, do_flip=True),
     }
 
     dataset_name = dataset_name.lower()
