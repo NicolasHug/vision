@@ -310,9 +310,6 @@ if __name__ == "__main__":
     #     print(len(glob))
     #     print([x.dtype for x in glob])
 
-    # from torchvision.datasets._optical_flow import KittiFlowDataset as K
-    # dd = K()
-
     # d = KittiFlow(transforms=FlowAugmentor(crop_size=(368, 496), min_scale=0.1, max_scale=1.0, do_flip=True))
     # d = KittiFlow(split="testing")
     # for glob in d:
@@ -324,5 +321,12 @@ if __name__ == "__main__":
     #     torch.testing.assert_close(flow1, flow2)
     #     print(flow2.min(), flow2.max(), flow2.dtype, flow2.shape)
     #     print(flow1.min(), flow1.max(), flow1.dtype, flow1.shape)
+
+    # d = FlyingThings3D()
+    # import numpy as np
+    # for e in d:
+    #     img1, img2, flow = e
+    #     print(type(flow), flow.dtype, flow.shape)
+    #     print(type(img1), np.asarray(img1).shape)
 
     main(args)

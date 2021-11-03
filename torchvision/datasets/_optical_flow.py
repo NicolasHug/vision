@@ -8,7 +8,6 @@ import numpy as np
 import torch
 from PIL import Image
 
-from .. import transforms as T
 from ..io.image import _read_png_16
 from .vision import VisionDataset
 
@@ -29,7 +28,6 @@ class FlowDataset(ABC, VisionDataset):
 
         self._flow_list = []
         self._image_list = []
-        self._extra_info = []
 
     def _read_img(self, file_name):
         return Image.open(file_name)
@@ -149,7 +147,6 @@ class Sintel(FlowDataset):
             image_list = sorted(glob(str(image_root / scene / "*.png")))
             for i in range(len(image_list) - 1):
                 self._image_list += [[image_list[i], image_list[i + 1]]]
-                self._extra_info += [(scene, i)]  # scene and frame_id
 
             if split != "test":
                 self._flow_list += sorted(glob(str(flow_root / scene / "*.flo")))

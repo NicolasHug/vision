@@ -34,6 +34,7 @@ class ToTensor(torch.nn.Module):
         img2 = F.pil_to_tensor(img2)
 
         if isinstance(flow, np.ndarray):
+            # TODO: This should be taken care of by the dataset
             flow = torch.from_numpy(flow).permute((2, 0, 1))
 
         return img1, img2, flow, valid
