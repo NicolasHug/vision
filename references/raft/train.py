@@ -9,6 +9,10 @@ from torchvision.models.video import RAFT
 from utils import MetricLogger, setup_ddp, sequence_loss, InputPadder
 
 
+# TODO: remove
+DATASET_ROOT = "/data/home/nicolashug/cluster/work/downloads"
+
+
 def get_train_dataset(dataset_name, small_data=False):
     d = {
         "kitti": KittiFlow,
@@ -44,7 +48,7 @@ def get_train_dataset(dataset_name, small_data=False):
         raise ValueError(f"Unknown dataset {dataset_name}")
 
     klass = d[dataset_name]
-    dataset = klass(transforms=transforms[dataset_name])
+    dataset = klass(root=DATASET_ROOT, transforms=transforms[dataset_name])
 
     if small_data:
         dataset._image_list = dataset._image_list[:200]
@@ -60,14 +64,14 @@ def validate_sintel(model, args, iters=32, small=False):
 
     model.eval()
 
-    for dstype in ["clean", "final"]:
+    for pass_name in ("clean", "final"):
         logger = MetricLogger(output_dir=args.output_dir)
         logger.add_meter("epe", fmt="{global_avg:.4f} ({value:.4f})", tb_val="global_avg")
         logger.add_meter("1px", fmt="{global_avg:.4f} ({value:.4f})", tb_val="global_avg")
         logger.add_meter("3px", fmt="{global_avg:.4f} ({value:.4f})", tb_val="global_avg")
         logger.add_meter("5px", fmt="{global_avg:.4f} ({value:.4f})", tb_val="global_avg")
 
-        val_dataset = Sintel(split="training", dstype=dstype, transforms=OpticalFlowPresetEval())
+        val_dataset = Sintel(root=DATASET_ROOT, split="train", pass_name=pass_name, transforms=OpticalFlowPresetEval())
         if args.small_data:
             val_dataset._image_list = val_dataset._image_list[:200]
             val_dataset._flow_list = val_dataset._flow_list[:200]
@@ -79,7 +83,7 @@ def validate_sintel(model, args, iters=32, small=False):
             pin_memory=True,
             num_workers=args.num_workers,
         )
-        header = f"Sintel val {dstype}"
+        header = f"Sintel val {pass_name}"
 
         num_samples = 0
 

@@ -4,14 +4,24 @@ import torchvision.transforms as T
 import torchvision.transforms.functional as F
 
 
-class CheckDtype(torch.nn.Module):
-    def __init__(self, dtype=torch.float32):
+class ValidateModelInput(torch.nn.Module):
+    def __init__(self):
         super().__init__()
-        self.dtype = dtype
 
-    def forward(self, *args):
-        assert all(x.dtype == self.dtype for x in args if x is not None)
-        return args
+    def forward(self, img1, img2, flow, valid):
+        args = (img1, img2, flow, valid)
+        assert all(isinstance(arg, torch.Tensor) for arg in args if arg is not None)
+        # TODO: let valid be bool
+        assert all(arg.dtype == torch.float32 for arg in args if arg is not None)
+
+        assert img1.shape == img2.shape
+        h, w = img1.shape[-2:]
+        if flow is not None:
+            assert flow.shape == (2, h, w)
+        if valid is not None:
+            assert valid.shape == (h, w)
+
+        return img1, img2, flow, valid
 
 
 class Scale(torch.nn.Module):
@@ -32,10 +42,9 @@ class ToTensor(torch.nn.Module):
     def forward(self, img1, img2, flow, valid):
         img1 = F.pil_to_tensor(img1)
         img2 = F.pil_to_tensor(img2)
-
-        if isinstance(flow, np.ndarray):
-            # TODO: This should be taken care of by the dataset
-            flow = torch.from_numpy(flow).permute((2, 0, 1))
+        flow = torch.from_numpy(flow)
+        if valid is not None:
+            valid = torch.from_numpy(valid)
 
         return img1, img2, flow, valid
 

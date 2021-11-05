@@ -10,7 +10,7 @@ class OpticalFlowPresetEval(torch.nn.Module):
             [
                 T.ToTensor(),
                 T.Scale(),
-                T.CheckDtype(),
+                T.ValidateModelInput(),
             ]
         )
 
@@ -48,7 +48,7 @@ class OpticalFlowPresetTrain(torch.nn.Module):
         if do_flip:
             transforms += [T.RandomHorizontalFlip(p=0.5), T.RandomVerticalFlip(p=0.1)]
 
-        transforms += [T.Scale(), T.CheckDtype()]
+        transforms += [T.Scale(), T.ValidateModelInput()]
         self.transforms = T.Compose(transforms)
 
     def __call__(self, img1, img2, flow, valid):

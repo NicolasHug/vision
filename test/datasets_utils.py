@@ -384,7 +384,7 @@ class DatasetTestCase(unittest.TestCase):
             args = self.dataset_args(tmpdir, complete_config)
             info = self._inject_fake_data(tmpdir, complete_config) if inject_fake_data else None
 
-            with self._maybe_apply_patches(patchers), disable_console_output():
+            with self._maybe_apply_patches(patchers):  # , disable_console_output():
                 dataset = self.DATASET_CLASS(*args, **complete_config, **special_kwargs)
 
             yield dataset, info
