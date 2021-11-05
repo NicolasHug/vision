@@ -21,14 +21,17 @@ class OpticalFlowPresetEval(torch.nn.Module):
 class OpticalFlowPresetTrain(torch.nn.Module):
     def __init__(
         self,
+        # MaybeRandomResizeAndCrop params
         crop_size,
         min_scale=-0.2,
         max_scale=0.5,
         stretch_prob=0.8,
+        # AsymmetricColorJitter params
         brightness=0.4,
         contrast=0.4,
         saturation=0.4,
         hue=0.5 / 3.14,
+        # Random[H,V]Flip params
         asymmetric_jitter_prob=0.2,
         do_flip=True,
     ):

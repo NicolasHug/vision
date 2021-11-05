@@ -42,7 +42,8 @@ class ToTensor(torch.nn.Module):
     def forward(self, img1, img2, flow, valid):
         img1 = F.pil_to_tensor(img1)
         img2 = F.pil_to_tensor(img2)
-        flow = torch.from_numpy(flow)
+        if flow is not None:
+            flow = torch.from_numpy(flow)
         if valid is not None:
             valid = torch.from_numpy(valid)
 
