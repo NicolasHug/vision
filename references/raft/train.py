@@ -93,11 +93,12 @@ def validate_sintel(model, args, iters=32, small=False):
             padder = InputPadder(image1.shape)
             image1, image2 = padder.pad(image1, image2)
 
-            _, flow_pr = model(image1, image2, iters=iters, test_mode=True)
+            flow_predictions = model(image1, image2, iters=iters)
+            flow_pred = flow_predictions[-1]
 
-            flow = padder.unpad(flow_pr).cpu()
+            flow_pred = padder.unpad(flow_pred).cpu()
 
-            epe = torch.sum((flow - flow_gt) ** 2, dim=1).sqrt()
+            epe = torch.sum((flow_pred - flow_gt) ** 2, dim=1).sqrt()
 
             logger.meters["epe"].update(epe.mean().item(), n=epe.numel())
             for distance in (1, 3, 5):
@@ -132,7 +133,7 @@ def main(args):
 
     print(args)
 
-    model = RAFT(args)  # TODO: pass better args
+    model = RAFT()
     model = model.to(args.local_rank)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.local_rank])
 
@@ -279,7 +280,7 @@ def get_args_parser(add_help=True):
     parser.add_argument("--train-dataset", help="determines which dataset to use for training")
     parser.add_argument("--resume", help="restore checkpoint")
     parser.add_argument("--val-dataset", type=str, nargs="+")
-    parser.add_argument("--small", action="store_true", help="use small model")
+    # parser.add_argument("--small", action="store_true", help="use small model")  # TODO: put this back
     parser.add_argument("--output-dir", default="checkpoints", type=str)
     parser.add_argument("--num-workers", type=int, default=16)
     parser.add_argument("--lr", type=float, default=0.00002)
