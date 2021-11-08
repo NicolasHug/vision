@@ -13,16 +13,20 @@ from utils import MetricLogger, setup_ddp, sequence_loss, InputPadder
 DATASET_ROOT = "/data/home/nicolashug/cluster/work/downloads"
 
 
-def get_train_dataset(dataset_name, small_data=False):
-    d = {
-        "kitti": KittiFlow,
-        "chairs": FlyingChairs,
-        "things": FlyingThings3D,
-        "sintel": Sintel,
-    }
-
-    transforms = {
-        "kitti": OpticalFlowPresetTrain(
+def get_train_dataset(stage):
+    if stage == "chairs":
+        transforms = OpticalFlowPresetTrain(crop_size=(368, 496), min_scale=0.1, max_scale=1.0, do_flip=True)
+        return FlyingChairs(root=DATASET_ROOT, split="train", transforms=transforms)
+    elif stage == "things":
+        transforms = OpticalFlowPresetTrain(crop_size=(400, 720), min_scale=-0.4, max_scale=0.8, do_flip=True)
+        return FlyingThings3D(root=DATASET_ROOT, split="train", pass_name="both", transforms=transforms)
+    elif stage == "sintel":
+        transforms = OpticalFlowPresetTrain(crop_size=(368, 768), min_scale=-0.2, max_scale=0.6, do_flip=True)
+        things_clean = FlyingThings3D(root=DATASET_ROOT, split="train", pass_name="clean", transforms=transforms)
+        sintel = Sintel(root=DATASET_ROOT, split="train", pass_name="both", transforms=transforms)
+        return 100 * sintel + things_clean
+    elif stage == "kitti":
+        transforms = OpticalFlowPresetTrain(
             # resize and crop params
             crop_size=(288, 960),
             min_scale=-0.2,
@@ -36,25 +40,10 @@ def get_train_dataset(dataset_name, small_data=False):
             saturation=0.3,
             hue=0.3 / 3.14,
             asymmetric_jitter_prob=0,
-        ),
-        "chairs": OpticalFlowPresetTrain(crop_size=(368, 496), min_scale=0.1, max_scale=1.0, do_flip=True),
-        "things": OpticalFlowPresetTrain(crop_size=(400, 720), min_scale=-0.4, max_scale=0.8, do_flip=True),
-        "sintel": OpticalFlowPresetTrain(crop_size=(368, 768), min_scale=-0.2, max_scale=0.6, do_flip=True),
-    }
-
-    dataset_name = dataset_name.lower()
-
-    if dataset_name not in d:
-        raise ValueError(f"Unknown dataset {dataset_name}")
-
-    klass = d[dataset_name]
-    dataset = klass(root=DATASET_ROOT, transforms=transforms[dataset_name])
-
-    if small_data:
-        dataset._image_list = dataset._image_list[:200]
-        dataset._flow_list = dataset._flow_list[:200]
-
-    return dataset
+        )
+        return KittiFlow(root=DATASET_ROOT, split="train", transforms=transforms)
+    else:
+        raise ValueError(f"Unknown stage {stage}")
 
 
 @torch.no_grad()
@@ -124,6 +113,58 @@ def validate_sintel(model, args, iters=32, small=False):
         print(header, logger)
 
 
+@torch.no_grad()
+def validate_kitti(model, args, iters=24):
+    """Peform validation using the KITTI-2015 (train) split"""
+    import numpy as np
+
+    model.eval()
+    val_dataset = KittiFlow(root=DATASET_ROOT, split="train", transforms=OpticalFlowPresetEval())
+    sampler = torch.utils.data.distributed.DistributedSampler(val_dataset, shuffle=False, drop_last=True)
+    val_loader = torch.utils.data.DataLoader(
+        val_dataset,
+        sampler=sampler,
+        batch_size=args.batch_size,
+        pin_memory=True,
+        num_workers=args.num_workers,
+    )
+
+    logger = MetricLogger(output_dir=args.output_dir)
+    logger.add_meter("per_image_epe", fmt="{global_avg:.4f} ({value:.4f})", tb_val="global_avg")
+    logger.add_meter("f1", fmt="{global_avg:.4f} ({value:.4f})", tb_val="global_avg")
+    header = "Kitti val"
+
+    for blob in logger.log(val_loader, header=header, sync=False, verbose=False):
+        image1, image2, flow_gt, valid_gt = blob
+        image1 = image1.cuda()
+        image2 = image2.cuda()
+        valid = valid_gt >= 0.5  # TODO: make it a boolean mask from the start
+
+        # TODO: How to let padder be part of the transforms?
+        # We need it later to modify the flow on a per-image basis o_o
+        padder = InputPadder(image1.shape, mode="kitti")
+        image1, image2 = padder.pad(image1, image2)
+
+        predictions = model(image1, image2, iters=iters)
+        flow = predictions[-1]
+        flow = padder.unpad(flow).cpu()
+
+        epe = torch.sum((flow - flow_gt) ** 2, dim=1).sqrt()
+        relative_epe = epe / torch.sum(flow_gt ** 2, dim=1).sqrt()
+
+        epe, relative_epe = epe[valid], relative_epe[valid]
+        bad_predictions = ((epe > 3) & (relative_epe > 0.05)).float()
+
+        # note the n=1 for per_image_epe: we compute an average over averages. We first average within each image and
+        # then average over the images. This is in contrast with the other epe computations of e.g. Sintel, where we
+        # average only once over all the pixels of all images.
+        logger.meters["per_image_epe"].update(epe.mean().item(), n=1)
+        logger.meters["f1"].update(bad_predictions.mean().item(), n=bad_predictions.numel())
+
+    logger.synchronize_between_processes()
+    print(header, logger)
+
+
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
@@ -150,15 +191,18 @@ def main(args):
     if args.train_dataset is None:
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
-        if args.val_dataset == ["sintel"]:
-            validate_sintel(model, args)
-        else:
-            raise ValueError(f"can't validate on {args.val_dataset}")
+        for val_dataset in args.val_dataset:
+            try:
+                {"sintel": validate_sintel, "kitti": validate_kitti,}[
+                    val_dataset
+                ](model, args)
+            except KeyError as ke:
+                raise ValueError(f"can't validate on {args.val_dataset}") from ke
         return
 
     model.train()
 
-    train_dataset = get_train_dataset(args.train_dataset, small_data=args.small_data)
+    train_dataset = get_train_dataset(args.train_dataset)
 
     # TODO: Should drop_last really be True? And shouhld it be set in the loader instead of the sampler?
     sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, shuffle=True, drop_last=True)
@@ -210,13 +254,7 @@ def main(args):
             # TODO: set p.grad = None instead? see https://twitter.com/karpathy/status/1299921324333170689/photo/1
             optimizer.zero_grad()
 
-            if len(data_blob) == 4:
-                image1, image2, flow, valid = data_blob
-            else:
-                image1, image2, flow = data_blob
-                valid = ((flow[:, 0, :, :].abs() < 1000) & (flow[:, 1, :, :].abs() < 1000)).float()
-
-            image1, image2, flow, valid = [x.cuda() for x in (image1, image2, flow, valid)]
+            image1, image2, flow, valid = [x.cuda() for x in data_blob]
 
             # print(f"I'm rank {args.rank} and I'm getting {image1[0][0][20][100]} as a given pixel value, {image1.shape = }", force=True)
 
@@ -310,28 +348,40 @@ if __name__ == "__main__":
 
     Path(args.output_dir).mkdir(exist_ok=True)
 
-    # d = FlyingChairs(transforms=FlowAugmentor(crop_size=(368, 496), min_scale=0.1, max_scale=1.0, do_flip=True))
-    # for glob in d:
-    #     print(len(glob))
-    #     print([x.dtype for x in glob])
-
-    # d = KittiFlow(transforms=FlowAugmentor(crop_size=(368, 496), min_scale=0.1, max_scale=1.0, do_flip=True))
-    # d = KittiFlow(split="testing")
-    # for glob in d:
-    #     print(len(glob))
-
-    # for glob, glob2 in zip(d, dd):
-    #     print(len(glob))
-    #     flow1, flow2 = glob[2], glob2[2]
-    #     torch.testing.assert_close(flow1, flow2)
-    #     print(flow2.min(), flow2.max(), flow2.dtype, flow2.shape)
-    #     print(flow1.min(), flow1.max(), flow1.dtype, flow1.shape)
-
-    # d = FlyingThings3D()
-    # import numpy as np
+    # d = Sintel(root=DATASET_ROOT, pass_name="clean")
+    # print(len(d))
+    # d = Sintel(root=DATASET_ROOT, pass_name="final")
+    # print(len(d))
+    # d = Sintel(root=DATASET_ROOT, pass_name="both")
+    # print(len(d))
     # for e in d:
-    #     img1, img2, flow = e
-    #     print(type(flow), flow.dtype, flow.shape)
-    #     print(type(img1), np.asarray(img1).shape)
+    #     print(len(e))
+
+    # transforms = OpticalFlowPresetTrain(crop_size=(400, 720), min_scale=-0.4, max_scale=0.8, do_flip=True)
+    # d = FlyingThings3D(root=DATASET_ROOT, pass_name="final", transforms=transforms)
+    # d = FlyingThings3D(root=DATASET_ROOT, pass_name="clean")#, transforms=transforms)
+    # print(len(d))
+    # for e in d:
+    #     print(e[0].mode)
+
+    # d = FlyingThings3D(root=DATASET_ROOT, pass_name="final")
+    # print(len(d))
+    # x = Sintel(root=DATASET_ROOT)
+    # d += x
+    # print("adding", len(x))
+    # print(len(d))
+    # x = 2 * Sintel(root=DATASET_ROOT)
+    # d += x
+    # print("adding", len(x))
+    # print(len(d))
+
+    # ft = FlyingThings3D(root=DATASET_ROOT, pass_name="final")
+    # kitti = KittiFlow(root=DATASET_ROOT)
+
+    # d = kitti + ft
+    # print(len(d))
+    # for e in d:
+    #     print(len(e))
+    #     print(e[-1] is None)
 
     main(args)

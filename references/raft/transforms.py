@@ -24,6 +24,30 @@ class ValidateModelInput(torch.nn.Module):
         return img1, img2, flow, valid
 
 
+class MakeValidFlowMask(torch.nn.Module):
+    # This is a noop for Kitti which already has a built-in flow mask.
+    # We create the flow mask in a tranform here instead of doing it in the main training loop
+    # so that we can concatenate e.g. Kitti and Sintel - one has buit-in mask, the other doesn't.
+    def __init__(self):
+        super().__init__()
+        self.threshold = 1000
+
+    def forward(self, img1, img2, flow, valid):
+        if flow is not None and valid is None:
+            valid = ((flow[0, :, :].abs() < self.threshold) & (flow[1, :, :].abs() < self.threshold)).float()
+        return img1, img2, flow, valid
+
+
+class DropAlphaChannel(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, img1, img2, flow, valid):
+        img1 = img1[:3, :, :]
+        img2 = img2[:3, :, :]
+        return img1, img2, flow, valid
+
+
 class Scale(torch.nn.Module):
     # TODO: find a better name
     # ALso: Calling this before converting the images to cuda seems to affect epe quite a bit
