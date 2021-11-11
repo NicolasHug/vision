@@ -177,6 +177,9 @@ class BasicUpdateBlock(nn.Module):
         delta_flow = self.flow_head(net)
 
         # scale mask to balance gradients
+        # TODO: shouldn't matter according to https://github.com/princeton-vl/RAFT/issues/24
+        # and https://github.com/princeton-vl/RAFT/issues/119
+        # Try removing it
         mask = 0.25 * self.mask(net)
         return net, mask, delta_flow
 
