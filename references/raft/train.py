@@ -185,6 +185,15 @@ def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
+def validate(model, args):
+    val_datasets = args.val_dataset or []
+    for val_dataset in val_datasets:
+        try:
+            {"sintel": validate_sintel, "kitti": validate_kitti}[val_dataset](model, args)
+        except KeyError as ke:
+            raise ValueError(f"Can't validate on {val_dataset}") from ke
+
+
 def main(args):
     setup_ddp(args)
 
@@ -207,11 +216,7 @@ def main(args):
     if args.train_dataset is None:
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
-        for val_dataset in args.val_dataset:
-            try:
-                {"sintel": validate_sintel, "kitti": validate_kitti}[val_dataset](model, args)
-            except KeyError as ke:
-                raise ValueError(f"can't validate on {args.val_dataset}") from ke
+        validate(model, args)
         return
 
     model.train()
@@ -301,17 +306,7 @@ def main(args):
             torch.save(model.state_dict(), Path(args.output_dir) / f"{args.name}.pth")
 
         if current_epoch % args.val_freq == 0 or done:
-            model.eval()
-
-            val_datasets = args.val_dataset or []
-            for val_dataset in val_datasets:
-                # if val_dataset == 'chairs':
-                #     results.update(evaluate.validate_chairs(model.module))
-                if val_dataset == "sintel":
-                    validate_sintel(model, args)
-                # elif val_dataset == 'kitti':
-                #     results.update(evaluate.validate_kitti(model.module))
-
+            validate(model, args)
             model.train()
             if args.train_dataset != "chairs":
                 model.module.freeze_bn()
