@@ -34,7 +34,7 @@ class MakeValidFlowMask(torch.nn.Module):
 
     def forward(self, img1, img2, flow, valid):
         if flow is not None and valid is None:
-            #TODO: use logical and on whole tensor
+            # TODO: use logical and on whole tensor
             valid = ((flow[0, :, :].abs() < self.threshold) & (flow[1, :, :].abs() < self.threshold)).float()
         return img1, img2, flow, valid
 

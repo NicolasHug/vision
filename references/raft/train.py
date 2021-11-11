@@ -1,4 +1,5 @@
 import argparse
+import warnings
 from pathlib import Path
 
 import torch
@@ -67,10 +68,7 @@ def get_train_dataset(stage):
 
 
 @torch.no_grad()
-def validate_sintel(model, args, iters=32, small=False):
-    # FIXME: this isn't 100% accurate because some samples will be duplicated if
-    # the dataset isn't divisible by the batch size.
-
+def validate_sintel(model, args):
     model.eval()
 
     for pass_name in ("clean", "final"):
@@ -81,9 +79,6 @@ def validate_sintel(model, args, iters=32, small=False):
         logger.add_meter("5px", fmt="{global_avg:.4f} ({value:.4f})", tb_val="global_avg")
 
         val_dataset = Sintel(root=DATASET_ROOT, split="train", pass_name=pass_name, transforms=OpticalFlowPresetEval())
-        if args.small_data:
-            val_dataset._image_list = val_dataset._image_list[:200]
-            val_dataset._flow_list = val_dataset._flow_list[:200]
         sampler = torch.utils.data.distributed.DistributedSampler(val_dataset, shuffle=False, drop_last=True)
         val_loader = torch.utils.data.DataLoader(
             val_dataset,
@@ -102,7 +97,7 @@ def validate_sintel(model, args, iters=32, small=False):
             padder = InputPadder(image1.shape)
             image1, image2 = padder.pad(image1, image2)
 
-            flow_predictions = model(image1, image2, iters=iters)
+            flow_predictions = model(image1, image2, num_flow_udpates=32)
             flow_pred = flow_predictions[-1]
 
             flow_pred = padder.unpad(flow_pred).cpu()
@@ -134,9 +129,13 @@ def validate_sintel(model, args, iters=32, small=False):
 
 
 @torch.no_grad()
-def validate_kitti(model, args, iters=24):
+def validate_kitti(model, args):
     """Peform validation using the KITTI-2015 (train) split"""
-    import numpy as np
+
+    if args.batch_size != 1 and args.rank == 0:
+        warnings.warn(
+            f"Batch-size={args.batch_size} was passed. For technical reasons, evaluating on Kitti can only be done with a batch-size of 1."
+        )
 
     model.eval()
     val_dataset = KittiFlow(root=DATASET_ROOT, split="train", transforms=OpticalFlowPresetEval())
@@ -144,7 +143,7 @@ def validate_kitti(model, args, iters=24):
     val_loader = torch.utils.data.DataLoader(
         val_dataset,
         sampler=sampler,
-        batch_size=args.batch_size,
+        batch_size=1,  # Kitti has different image sizes so we need to individually pad them, see comment in InputPadder
         pin_memory=True,
         num_workers=args.num_workers,
     )
@@ -160,12 +159,10 @@ def validate_kitti(model, args, iters=24):
         image2 = image2.cuda()
         valid = valid_gt >= 0.5  # TODO: make it a boolean mask from the start
 
-        # TODO: How to let padder be part of the transforms?
-        # We need it later to modify the flow on a per-image basis o_o
         padder = InputPadder(image1.shape, mode="kitti")
         image1, image2 = padder.pad(image1, image2)
 
-        predictions = model(image1, image2, iters=iters)
+        predictions = model(image1, image2, num_flow_udpates=24)
         flow = predictions[-1]
         flow = padder.unpad(flow).cpu()
 
@@ -213,9 +210,7 @@ def main(args):
         torch.backends.cudnn.deterministic = True
         for val_dataset in args.val_dataset:
             try:
-                {"sintel": validate_sintel, "kitti": validate_kitti,}[
-                    val_dataset
-                ](model, args)
+                {"sintel": validate_sintel, "kitti": validate_kitti}[val_dataset](model, args)
             except KeyError as ke:
                 raise ValueError(f"can't validate on {args.val_dataset}") from ke
         return
@@ -234,7 +229,7 @@ def main(args):
         # worker_init_fn=lambda x:print(f"I'm rank {args.rank} and my worker info for data loading is {torch.utils.data.get_worker_info()}", force=True)
     )
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wdecay, eps=args.epsilon)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay, eps=args.adamw_eps)
 
     if args.num_steps is not None:
         extra_scheduler_args = dict(total_steps=args.num_steps + 100)
@@ -269,16 +264,15 @@ def main(args):
 
         for data_blob in logger.log(train_loader):
 
-            # TODO: set p.grad = None instead? see https://twitter.com/karpathy/status/1299921324333170689/photo/1
             optimizer.zero_grad()
 
             image1, image2, flow, valid = (x.cuda() for x in data_blob)
-
-            flow_predictions = model(image1, image2, iters=args.iters)
+            flow_predictions = model(image1, image2, num_flow_updates=args.num_flow_udpates)
 
             loss, metrics = sequence_loss(flow_predictions, flow, valid, args.gamma)
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
+
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
 
             optimizer.step()
             scheduler.step()
@@ -287,7 +281,7 @@ def main(args):
             metrics["current_step"] = current_step
             metrics["last_lr"] = scheduler.get_last_lr()[0]
             metrics["lr"] = args.lr
-            metrics["wdecay"] = args.wdecay
+            metrics["wdecay"] = args.weight_decay
             logger.update(**metrics)
 
             current_step += 1
@@ -327,79 +321,53 @@ def main(args):
 
 
 def get_args_parser(add_help=True):
-    parser = argparse.ArgumentParser(add_help=add_help)
-    parser.add_argument("--name", default="raft", help="name your experiment")
-    parser.add_argument("--train-dataset", help="determines which dataset to use for training")
-    parser.add_argument("--resume", help="restore checkpoint")
-    parser.add_argument("--val-dataset", type=str, nargs="+")
-    # parser.add_argument("--small", action="store_true", help="use small model")  # TODO: put this back
-    parser.add_argument("--output-dir", default="checkpoints", type=str)
-    parser.add_argument("--num-workers", type=int, default=16)
-    parser.add_argument("--lr", type=float, default=0.00002)
+    parser = argparse.ArgumentParser(add_help=add_help, description="Train or evaluate an optical-flow model.")
+    parser.add_argument(
+        "--name",
+        default="raft",
+        type=str,
+        help="The name of the experiment - determines the name of the files where weights are saved.",
+    )
+    parser.add_argument(
+        "--output-dir", default="checkpoints", type=str, help="Output dir where checkpoints will be stored."
+    )
+    parser.add_argument(
+        "--resume",
+        type=str,
+        help="A path to previously saved weights. Used to re-start training from, or evaluate a pre-saved model.",
+    )
 
-    # TODO: make these mutually exclusive maybe?
-    parser.add_argument("--num-epochs", type=int, default=500)
-    parser.add_argument("--num-steps", type=int, default=100000)
+    parser.add_argument("--num-workers", type=int, default=16, help="Number of workers for the data loading part.")
 
+    parser.add_argument(
+        "--train-dataset",
+        type=str,
+        help="The dataset to use for training. If not passed, only validation is performed (and you probably want to pass --resume).",
+    )
+    parser.add_argument("--val-dataset", type=str, nargs="+", help="The dataset(s) to use for validation.")
+    parser.add_argument("--val-freq", type=int, default=2, help="Validate every X epochs")
+    parser.add_argument("--num-epochs", type=int, default=500, help="The maximum number of epochs")
+    parser.add_argument("--num-steps", type=int, default=100000, help="The maximum number of steps")
     parser.add_argument("--batch-size", type=int, default=6)
 
-    parser.add_argument("--iters", type=int, default=12)
-    parser.add_argument("--wdecay", type=float, default=0.00005)
-    parser.add_argument("--val-freq", type=int, default=2)
-    parser.add_argument("--epsilon", type=float, default=1e-8)
-    parser.add_argument("--clip", type=float, default=1.0)
-    parser.add_argument("--gamma", type=float, default=0.8, help="exponential weighting")
+    parser.add_argument("--lr", type=float, default=0.00002, help="Learning rate for AdamW optimizer")
+    parser.add_argument("--weight-decay", type=float, default=0.00005, help="Weight decay for AdamW optimizer")
+    parser.add_argument("--adamw_eps", type=float, default=1e-8, help="eps value for AdamW optimizer")
 
-    parser.add_argument("--small-data", action="store_true", help="use small data")
+    parser.add_argument(
+        "--num_flow_updates",
+        type=int,
+        default=12,
+        help="number of updates (or 'iters') in the 'update operator' of the model.",
+    )
 
-    parser.add_argument("--dist-url", default="env://", help="url used to set up distributed training")
+    parser.add_argument("--gamma", type=float, default=0.8, help="exponential weighting for loss. Must be < 1.")
+
+    parser.add_argument("--dist-url", default="env://", help="URL used to set up distributed training")
     return parser
 
 
 if __name__ == "__main__":
     args = get_args_parser().parse_args()
-
     Path(args.output_dir).mkdir(exist_ok=True)
-
-    # d = Sintel(root=DATASET_ROOT, pass_name="clean")
-    # print(len(d))
-    # d = Sintel(root=DATASET_ROOT, pass_name="final")
-    # print(len(d))
-    # d = Sintel(root=DATASET_ROOT, pass_name="both")
-    # print(len(d))
-    # for e in d:
-    #     print(len(e))
-
-    # transforms = OpticalFlowPresetTrain(crop_size=(400, 720), min_scale=-0.4, max_scale=0.8, do_flip=True)
-    # d = FlyingThings3D(root=DATASET_ROOT, pass_name="final", transforms=transforms)
-    # d = FlyingThings3D(root=DATASET_ROOT, pass_name="clean")#, transforms=transforms)
-    # print(len(d))
-    # for e in d:
-    #     print(e[0].mode)
-
-    # d = FlyingThings3D(root=DATASET_ROOT, pass_name="final")
-    # print(len(d))
-    # x = Sintel(root=DATASET_ROOT)
-    # d += x
-    # print("adding", len(x))
-    # print(len(d))
-    # x = 2 * Sintel(root=DATASET_ROOT)
-    # d += x
-    # print("adding", len(x))
-    # print(len(d))
-
-    # ft = FlyingThings3D(root=DATASET_ROOT, pass_name="final")
-    # kitti = KittiFlow(root=DATASET_ROOT)
-
-    # d = kitti + ft
-    # print(len(d))
-    # for e in d:
-    #     print(len(e))
-    #     print(e[-1] is None)
-
-    # transforms = OpticalFlowPresetTrain(crop_size=(368, 768), min_scale=-0.5, max_scale=0.2, do_flip=True)
-    # d = HD1K(root=DATASET_ROOT, split="train", transforms=transforms)
-    # for e in d:
-    #     print("blah", len(e), e[-1] is None, e[0].shape, e[1].shape)
-
     main(args)

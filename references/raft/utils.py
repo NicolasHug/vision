@@ -187,6 +187,9 @@ class MetricLogger(object):
 def sequence_loss(flow_preds, flow_gt, valid, gamma=0.8, max_flow=400):
     """Loss function defined over sequence of flow predictions"""
 
+    if gamma > 1:
+        raise ValueError(f"Gamma should be < 1, got {gamma}.")
+
     n_predictions = len(flow_preds)
     flow_loss = 0.0
 
@@ -215,6 +218,12 @@ def sequence_loss(flow_preds, flow_gt, valid, gamma=0.8, max_flow=400):
 
 class InputPadder:
     """Pads images such that dimensions are divisible by 8"""
+
+    # TODO: Ideally, this should be part of the eval transforms preset, instead
+    # of being part of the validation code. It's not obvious what a good
+    # solution would be, because we need to unpad the predicted flows according
+    # to the input images' size, and in some datasets (Kitti) images can have
+    # variable sizes.
 
     def __init__(self, dims, mode="sintel"):
         self.ht, self.wd = dims[-2:]
@@ -266,9 +275,9 @@ def setup_ddp(args):
         # if we're here, the script was called by run_with_submitit.py
         args.local_rank = args.gpu
     else:
-        raise ValueError("Sorry, I can't set up the distributed training ¯\_(ツ)_/¯")
+        raise ValueError("Sorry, I can't set up the distributed training ¯\_(ツ)_/¯.")
 
-    _redefine_print(args.rank == 0)
+    _redefine_print(is_main=(args.rank == 0))
 
     torch.cuda.set_device(args.local_rank)
     torch.distributed.init_process_group(

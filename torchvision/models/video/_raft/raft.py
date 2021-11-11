@@ -9,7 +9,7 @@ from .utils import bilinear_sampler, coords_grid, upflow8
 
 
 class ResidualBlock(nn.Module):
-    #TODO: This is very similar to resnet except for one call to relu
+    # TODO: This is very similar to resnet except for one call to relu
     def __init__(self, in_planes, planes, norm_fn, stride=1):
         super().__init__()
 
@@ -131,7 +131,7 @@ class BasicMotionEncoder(nn.Module):
 
 
 class SepConvGRU(nn.Module):
-    #TODO :check core implem?
+    # TODO :check core implem?
     def __init__(self, hidden_dim=128, input_dim=192 + 128):
         super().__init__()
         self.convz1 = nn.Conv2d(hidden_dim + input_dim, hidden_dim, (1, 5), padding=(0, 2))
@@ -274,7 +274,7 @@ class RAFT(nn.Module):
         up_flow = up_flow.permute(0, 1, 4, 2, 5, 3)
         return up_flow.reshape(N, 2, 8 * H, 8 * W)
 
-    def forward(self, image1, image2, iters=12):
+    def forward(self, image1, image2, num_flow_updates=12):
         """Estimate optical flow between pair of frames"""
 
         hdim = self.hidden_dim
@@ -296,7 +296,7 @@ class RAFT(nn.Module):
         coords1 = coords_grid(bs, h // 8, w // 8).cuda()
 
         flow_predictions = []
-        for _ in range(iters):
+        for _ in range(num_flow_updates):
             coords1 = coords1.detach()
             corr = corr_fn(coords1)  # index correlation volume
 
