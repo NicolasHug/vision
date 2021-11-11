@@ -17,13 +17,14 @@ class ResidualBlock(nn.Module):
 
         self.norm1 = norm_layer(planes)
         self.norm2 = norm_layer(planes)
-        if not stride == 1:
-            self.norm3 = norm_layer(planes)
 
         if stride == 1:
             self.downsample = None
         else:
-            self.downsample = nn.Sequential(nn.Conv2d(in_planes, planes, kernel_size=1, stride=stride), self.norm3)
+            self.downsample = nn.Sequential(
+                nn.Conv2d(in_planes, planes, kernel_size=1, stride=stride),
+                norm_layer(planes)
+            )
 
     def forward(self, x):
         y = x
@@ -74,7 +75,6 @@ class BasicEncoder(nn.Module):
     def forward(self, image1, image2=None):
 
         if image2 is not None:
-            batch_dim = image1.shape[0]
             x = torch.cat([image1, image2], dim=0)
         else:
             x = image1
@@ -90,7 +90,8 @@ class BasicEncoder(nn.Module):
         x = self.conv2(x)
 
         if image2 is not None:
-            x = torch.split(x, [batch_dim, batch_dim], dim=0)
+            batch_size = image1.shape[0]
+            x = torch.split(x, [batch_size, batch_size], dim=0)
 
         return x
 
@@ -175,7 +176,7 @@ class BasicUpdateBlock(nn.Module):
         net = self.gru(net, inp)
         delta_flow = self.flow_head(net)
 
-        # scale mask to balence gradients
+        # scale mask to balance gradients
         mask = 0.25 * self.mask(net)
         return net, mask, delta_flow
 
@@ -292,11 +293,7 @@ class RAFT(nn.Module):
             # F(t+1) = F(t) + \Delta(t)
             coords1 = coords1 + delta_flow
 
-            # upsample predictions
-            if up_mask is None:
-                flow_up = upflow8(coords1 - coords0)
-            else:
-                flow_up = self.upsample_flow(coords1 - coords0, up_mask)
+            flow_up = self.upsample_flow(coords1 - coords0, up_mask)
 
             flow_predictions.append(flow_up)
 
