@@ -10,7 +10,7 @@ class ResidualBlock(nn.Module):
     def __init__(self, in_planes, planes, norm_layer, stride=1):
         super().__init__()
 
-        # Note: bias=False because batchnorm would cancel the bias anyway
+        # Note: bias=False because the norm would cancel the bias anyway
         self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, padding=1, stride=stride, bias=False)
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, padding=1, bias=False)
         self.relu = nn.ReLU(inplace=True)
@@ -57,7 +57,7 @@ class BasicEncoder(nn.Module):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
-            elif isinstance(m, (nn.BatchNorm2d, nn.InstanceNorm2d, nn.GroupNorm)):
+            elif isinstance(m, (nn.BatchNorm2d, nn.InstanceNorm2d)):
                 if m.weight is not None:
                     nn.init.constant_(m.weight, 1)
                 if m.bias is not None:
@@ -118,7 +118,6 @@ class BasicMotionEncoder(nn.Module):
 
 
 class SepConvGRU(nn.Module):
-    # TODO :check core implem?
     def __init__(self, hidden_dim=128, input_dim=192 + 128):
         super().__init__()
         self.convz1 = nn.Conv2d(hidden_dim + input_dim, hidden_dim, (1, 5), padding=(0, 2))

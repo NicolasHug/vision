@@ -13,6 +13,8 @@ class ValidateModelInput(torch.nn.Module):
         assert all(isinstance(arg, torch.Tensor) for arg in (img1, img2, flow, valid_flow_mask) if arg is not None)
         assert all(arg.dtype == torch.float32 for arg in (img1, img2, flow) if arg is not None)
 
+        # TODO: check whether images should be contiguous?
+
         assert img1.shape == img2.shape
         h, w = img1.shape[-2:]
         if flow is not None:
@@ -37,24 +39,14 @@ class MakeValidFlowMask(torch.nn.Module):
         return img1, img2, flow, valid_flow_mask
 
 
-class Scale(torch.nn.Module):
-    # TODO: find a better name
-    # ALso: Calling this before converting the images to cuda seems to affect epe quite a bit
-
-    def forward(self, img1, img2, flow, valid_flow_mask):
-        img1 = F.convert_image_dtype(img1, dtype=torch.float32) * 2 - 1
-        img2 = F.convert_image_dtype(img2, dtype=torch.float32) * 2 - 1
-
-        img1 = img1.contiguous()
-        img2 = img2.contiguous()
-
-        return img1, img2, flow, valid_flow_mask
-
-
 class ToTensor(torch.nn.Module):
     def forward(self, img1, img2, flow, valid_flow_mask):
         img1 = F.pil_to_tensor(img1)
+        img1 = F.convert_image_dtype(img1, dtype=torch.float32) * 2 - 1
+
         img2 = F.pil_to_tensor(img2)
+        img2 = F.convert_image_dtype(img2, dtype=torch.float32) * 2 - 1
+
         if flow is not None:
             flow = torch.from_numpy(flow)
         if valid_flow_mask is not None:
