@@ -5,6 +5,7 @@ from collections import defaultdict
 from collections import deque
 
 import torch
+import torch.distributed as dist
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 
@@ -32,12 +33,10 @@ class SmoothedValue(object):
         """
         Warning: does not synchronize the deque!
         """
-        t = torch.tensor([self.count, self.total], dtype=torch.float64, device="cuda")
-        torch.distributed.barrier()
-        torch.distributed.all_reduce(t)
+        t = reduce_across_processes([self.count, self.total])
         t = t.tolist()
         self.count = int(t[0])
-        self.total = float(t[1])
+        self.total = t[1]
 
     def get_tb_val(self):
         # tells tensorboard what it should register
@@ -280,9 +279,15 @@ def setup_ddp(args):
     _redefine_print(is_main=(args.rank == 0))
 
     torch.cuda.set_device(args.local_rank)
-    torch.distributed.init_process_group(
+    dist.init_process_group(
         backend="nccl",
         rank=args.rank,
         world_size=args.world_size,
         init_method=args.dist_url,
     )
+
+def reduce_across_processes(val):
+    t = torch.tensor(val, device="cuda")
+    dist.barrier()
+    dist.all_reduce(t)
+    return t

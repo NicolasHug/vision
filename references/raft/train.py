@@ -7,7 +7,7 @@ from presets import OpticalFlowPresetTrain, OpticalFlowPresetEval
 from torch.cuda.amp import GradScaler
 from torchvision.datasets import KittiFlow, FlyingChairs, FlyingThings3D, Sintel, HD1K
 from torchvision.models.video import RAFT
-from utils import MetricLogger, setup_ddp, sequence_loss, InputPadder
+from utils import MetricLogger, setup_ddp, sequence_loss, InputPadder, reduce_across_processes
 
 
 # TODO: remove
@@ -89,8 +89,6 @@ def validate_sintel(model, args):
         )
         header = f"Sintel val {pass_name}"
 
-        num_samples = 0
-
         def inner_loop(image1, image2, flow_gt):
             image1, image2 = image1.cuda(), image2.cuda()
 
@@ -108,19 +106,17 @@ def validate_sintel(model, args):
             for distance in (1, 3, 5):
                 logger.meters[f"{distance}px"].update((epe < distance).float().mean().item(), n=epe.numel())
 
+        num_processed_samples = 0
         for blob in logger.log(val_loader, header=header, sync=False, verbose=False):
             image1, image2, flow_gt = blob
             inner_loop(image1, image2, flow_gt)
-            num_samples += image1.shape[0]
+            num_processed_samples += image1.shape[0]
 
-        num_samples = torch.tensor([num_samples], dtype=torch.float64, device="cuda")
-        torch.distributed.barrier()
-        torch.distributed.all_reduce(num_samples)
-        num_samples = int(num_samples.item())
-        print(f"Evaluated {num_samples} / {len(val_dataset)} samples in batch")
+        num_processed_samples = reduce_across_processes(num_processed_samples)
+        print(f"Evaluated {num_processed_samples} / {len(val_dataset)} samples in batch")
 
         if args.rank == 0:
-            for i in range(num_samples, len(val_dataset)):
+            for i in range(num_processed_samples, len(val_dataset)):
                 image1, image2, flow_gt = val_dataset[i]
                 inner_loop(image1[None, :, :, :], image2[None, :, :, :], flow_gt[None, :, :, :])
 
