@@ -224,13 +224,12 @@ def main(args):
 
     train_dataset = get_train_dataset(args.train_dataset)
 
-    # TODO: Should drop_last really be True? And shouhld it be set in the loader instead of the sampler?
     sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, shuffle=True, drop_last=True)
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         sampler=sampler,
         batch_size=args.batch_size,
-        pin_memory=True,  # TODO: find out why it was False in raft repo?
+        pin_memory=True,
         num_workers=args.num_workers,
         # worker_init_fn=lambda x:print(f"I'm rank {args.rank} and my worker info for data loading is {torch.utils.data.get_worker_info()}", force=True)
     )
@@ -251,7 +250,6 @@ def main(args):
         **extra_scheduler_args,
     )
 
-    scaler = GradScaler(enabled=args.mixed_precision)  # TODO: currently untested
     logger = MetricLogger(output_dir=args.output_dir)
     logger.add_meter("epoch", tb_val="value", print=False)
     logger.add_meter("current_step", tb_val="value", print=False)
@@ -274,20 +272,16 @@ def main(args):
             # TODO: set p.grad = None instead? see https://twitter.com/karpathy/status/1299921324333170689/photo/1
             optimizer.zero_grad()
 
-            image1, image2, flow, valid = [x.cuda() for x in data_blob]
-
-            # print(f"I'm rank {args.rank} and I'm getting {image1[0][0][20][100]} as a given pixel value, {image1.shape = }", force=True)
+            image1, image2, flow, valid = (x.cuda() for x in data_blob)
 
             flow_predictions = model(image1, image2, iters=args.iters)
 
             loss, metrics = sequence_loss(flow_predictions, flow, valid, args.gamma)
-            scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
+            loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
 
-            scaler.step(optimizer)
+            optimizer.step()
             scheduler.step()
-            scaler.update()
 
             metrics["epoch"] = current_epoch
             metrics["current_step"] = current_step
@@ -348,7 +342,6 @@ def get_args_parser(add_help=True):
     parser.add_argument("--num-steps", type=int, default=100000)
 
     parser.add_argument("--batch-size", type=int, default=6)
-    parser.add_argument("--mixed_precision", action="store_true", help="use mixed precision")
 
     parser.add_argument("--iters", type=int, default=12)
     parser.add_argument("--wdecay", type=float, default=0.00005)
