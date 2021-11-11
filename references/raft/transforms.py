@@ -1,86 +1,66 @@
-import numpy as np
 import torch
 import torchvision.transforms as T
 import torchvision.transforms.functional as F
 
 
 class ValidateModelInput(torch.nn.Module):
+    # Pass-through transform that checks the shape and dtypes to make sure the model gets what it expects
     def __init__(self):
         super().__init__()
 
-    def forward(self, img1, img2, flow, valid):
-        args = (img1, img2, flow, valid)
-        assert all(isinstance(arg, torch.Tensor) for arg in args if arg is not None)
-        # TODO: let valid be bool
-        assert all(arg.dtype == torch.float32 for arg in args if arg is not None)
+    def forward(self, img1, img2, flow, valid_flow_mask):
+
+        assert all(isinstance(arg, torch.Tensor) for arg in (img1, img2, flow, valid_flow_mask) if arg is not None)
+        assert all(arg.dtype == torch.float32 for arg in (img1, img2, flow) if arg is not None)
 
         assert img1.shape == img2.shape
         h, w = img1.shape[-2:]
         if flow is not None:
             assert flow.shape == (2, h, w)
-        if valid is not None:
-            assert valid.shape == (h, w)
+        if valid_flow_mask is not None:
+            assert valid_flow_mask.shape == (h, w)
+            assert valid_flow_mask.dtype == torch.bool
 
-        return img1, img2, flow, valid
+        return img1, img2, flow, valid_flow_mask
 
 
 class MakeValidFlowMask(torch.nn.Module):
-    # This is a noop for Kitti which already has a built-in flow mask.
-    # We create the flow mask in a tranform here instead of doing it in the main training loop
-    # so that we can concatenate e.g. Kitti and Sintel - one has buit-in mask, the other doesn't.
+    # This transform generates a valid_flow_mask if it doesn't exist. This is a
+    # noop for Kitti and HD1K which already come with a built-in flow mask.
     def __init__(self):
         super().__init__()
         self.threshold = 1000
 
-    def forward(self, img1, img2, flow, valid):
-        if flow is not None and valid is None:
-            # TODO: use logical and on whole tensor
-            valid = ((flow[0, :, :].abs() < self.threshold) & (flow[1, :, :].abs() < self.threshold)).float()
-        return img1, img2, flow, valid
-
-
-class CheckChannels(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, img1, img2, flow, valid):
-        # Drop alpha channel if it exists
-        img1 = img1[:3, :, :]
-        img2 = img2[:3, :, :]
-
-        # Convert grayscale images to 3 channels
-        # TODO: convert image with PIL first in dataset
-        if img1.shape[0] == 1:
-            img1 = img1.repeat(3, 1, 1)
-            img2 = img2.repeat(3, 1, 1)
-
-        return img1, img2, flow, valid
+    def forward(self, img1, img2, flow, valid_flow_mask):
+        if flow is not None and valid_flow_mask is None:
+            valid_flow_mask = (flow.abs() < self.threshold).all(axis=0)
+        return img1, img2, flow, valid_flow_mask
 
 
 class Scale(torch.nn.Module):
     # TODO: find a better name
     # ALso: Calling this before converting the images to cuda seems to affect epe quite a bit
 
-    def forward(self, img1, img2, flow, valid):
+    def forward(self, img1, img2, flow, valid_flow_mask):
         img1 = F.convert_image_dtype(img1, dtype=torch.float32) * 2 - 1
         img2 = F.convert_image_dtype(img2, dtype=torch.float32) * 2 - 1
 
         img1 = img1.contiguous()
         img2 = img2.contiguous()
 
-        return img1, img2, flow, valid
+        return img1, img2, flow, valid_flow_mask
 
 
 class ToTensor(torch.nn.Module):
-    def forward(self, img1, img2, flow, valid):
+    def forward(self, img1, img2, flow, valid_flow_mask):
         img1 = F.pil_to_tensor(img1)
         img2 = F.pil_to_tensor(img2)
         if flow is not None:
             flow = torch.from_numpy(flow)
-        if valid is not None:
-            valid = torch.from_numpy(valid)
+        if valid_flow_mask is not None:
+            valid_flow_mask = torch.from_numpy(valid_flow_mask)
 
-        return img1, img2, flow, valid
+        return img1, img2, flow, valid_flow_mask
 
 
 class AsymmetricColorJitter(T.ColorJitter):
@@ -88,7 +68,7 @@ class AsymmetricColorJitter(T.ColorJitter):
         super().__init__(brightness=brightness, contrast=contrast, saturation=saturation, hue=hue)
         self.p = p
 
-    def forward(self, img1, img2, flow, valid):
+    def forward(self, img1, img2, flow, valid_flow_mask):
 
         if torch.rand(1) < self.p:
             # asymmetric: different transform for img1 and img2
@@ -100,11 +80,11 @@ class AsymmetricColorJitter(T.ColorJitter):
             batch = super().forward(batch)
             img1, img2 = batch[0], batch[1]
 
-        return img1, img2, flow, valid
+        return img1, img2, flow, valid_flow_mask
 
 
 class RandomErase(torch.nn.Module):
-    def forward(self, img1, img2, flow, valid):
+    def forward(self, img1, img2, flow, valid_flow_mask):
         bounds = [50, 100]
         ht, wd = img2.shape[:2]
         mean_color = img2.view(3, -1).float().mean(axis=-1).round()
@@ -114,33 +94,33 @@ class RandomErase(torch.nn.Module):
             dx, dy = torch.randint(bounds[0], bounds[1], size=(2,))
             img2[:, y0 : y0 + dy, x0 : x0 + dx] = mean_color[:, None, None]
 
-        return img1, img2, flow, valid
+        return img1, img2, flow, valid_flow_mask
 
 
 class RandomHorizontalFlip(T.RandomHorizontalFlip):
-    def forward(self, img1, img2, flow, valid):
+    def forward(self, img1, img2, flow, valid_flow_mask):
         if torch.rand(1) > self.p:
-            return img1, img2, flow, valid
+            return img1, img2, flow, valid_flow_mask
 
         img1 = F.hflip(img1)
         img2 = F.hflip(img2)
         flow = F.hflip(flow) * torch.tensor([-1, 1])[:, None, None]
-        if valid is not None:
-            valid = F.hflip(valid)
-        return img1, img2, flow, valid
+        if valid_flow_mask is not None:
+            valid_flow_mask = F.hflip(valid_flow_mask)
+        return img1, img2, flow, valid_flow_mask
 
 
 class RandomVerticalFlip(T.RandomVerticalFlip):
-    def forward(self, img1, img2, flow, valid):
+    def forward(self, img1, img2, flow, valid_flow_mask):
         if torch.rand(1) > self.p:
-            return img1, img2, flow, valid
+            return img1, img2, flow, valid_flow_mask
 
         img1 = F.vflip(img1)
         img2 = F.vflip(img2)
         flow = F.vflip(flow) * torch.tensor([1, -1])[:, None, None]
-        if valid is not None:
-            valid = F.vflip(valid)
-        return img1, img2, flow, valid
+        if valid_flow_mask is not None:
+            valid_flow_mask = F.vflip(valid_flow_mask)
+        return img1, img2, flow, valid_flow_mask
 
 
 class MaybeResizeAndCrop(torch.nn.Module):
@@ -154,7 +134,7 @@ class MaybeResizeAndCrop(torch.nn.Module):
     # RandomResizedCrop, but the issue is that the parameters are sampled at
     # random, with different distributions. Plotting (the equivalent of) `scale`
     # and `ratio` from MaybeResizeAndCrop shows that the distributions of these
-    # parameter are very different from what can be obtained from the
+    # parameters are very different from what can be obtained from the
     # parametrization of RandomResizedCrop. I tried training RAFT by using
     # RandomResizedCrop and tweaking the parameters a bit, but couldn't get
     # an epe as good as with MaybeResizeAndCrop.
@@ -167,7 +147,7 @@ class MaybeResizeAndCrop(torch.nn.Module):
         self.resize_prob = 0.8
         self.max_stretch = 0.2
 
-    def forward(self, img1, img2, flow, valid):
+    def forward(self, img1, img2, flow, valid_flow_mask):
         # randomly sample scale
         h, w = img1.shape[-2:]
         # Note: in original code, they use + 1 instead of + 8 for sparse datasets (e.g. Kitti)
@@ -190,11 +170,13 @@ class MaybeResizeAndCrop(torch.nn.Module):
             # rescale the images
             img1 = F.resize(img1, size=(new_h, new_w))
             img2 = F.resize(img2, size=(new_h, new_w))
-            if valid is None:
+            if valid_flow_mask is None:
                 flow = F.resize(flow, size=(new_h, new_w))
                 flow = flow * torch.tensor([scale_x, scale_y])[:, None, None]
             else:
-                flow, valid = self._resize_sparse_flow(flow, valid, scale_x=scale_x, scale_y=scale_y)
+                flow, valid_flow_mask = self._resize_sparse_flow(
+                    flow, valid_flow_mask, scale_x=scale_x, scale_y=scale_y
+                )
 
         # Note: For sparse datasets (Kitti), the original code uses a "margin"
         # See e.g. https://github.com/princeton-vl/RAFT/blob/master/core/utils/augmentor.py#L220:L220
@@ -205,13 +187,13 @@ class MaybeResizeAndCrop(torch.nn.Module):
         img1 = img1[:, y0 : y0 + self.crop_size[0], x0 : x0 + self.crop_size[1]]
         img2 = img2[:, y0 : y0 + self.crop_size[0], x0 : x0 + self.crop_size[1]]
         flow = flow[:, y0 : y0 + self.crop_size[0], x0 : x0 + self.crop_size[1]]
-        if valid is not None:
-            valid = valid[y0 : y0 + self.crop_size[0], x0 : x0 + self.crop_size[1]]
+        if valid_flow_mask is not None:
+            valid_flow_mask = valid_flow_mask[y0 : y0 + self.crop_size[0], x0 : x0 + self.crop_size[1]]
 
-        return img1, img2, flow, valid
+        return img1, img2, flow, valid_flow_mask
 
-    def _resize_sparse_flow(self, flow, valid, scale_x=1.0, scale_y=1.0):
-        # This resizes both the flow and the valid mask (which is assumed to be reasonably sparse)
+    def _resize_sparse_flow(self, flow, valid_flow_mask, scale_x=1.0, scale_y=1.0):
+        # This resizes both the flow and the valid_flow_mask mask (which is assumed to be reasonably sparse)
         # There are as-many non-zero values in the original flow as in the resized flow (up to OOB)
         # So for example if scale_x = scale_y = 2, the sparsity of the output flow is multiplied by 4
 
@@ -220,12 +202,11 @@ class MaybeResizeAndCrop(torch.nn.Module):
         h_new = int(round(h * scale_y))
         w_new = int(round(w * scale_x))
         flow_new = torch.zeros(size=[2, h_new, w_new], dtype=flow.dtype)
-        valid_new = torch.zeros(size=[h_new, w_new], dtype=valid.dtype)
+        valid_new = torch.zeros(size=[h_new, w_new], dtype=valid_flow_mask.dtype)
 
         jj, ii = torch.meshgrid(torch.arange(w), torch.arange(h), indexing="xy")
 
-        valid_bool = valid.to(bool)
-        ii_valid, jj_valid = ii[valid_bool], jj[valid_bool]
+        ii_valid, jj_valid = ii[valid_flow_mask], jj[valid_flow_mask]
 
         ii_valid_new = torch.round(ii_valid.to(float) * scale_y).to(torch.long)
         jj_valid_new = torch.round(jj_valid.to(float) * scale_x).to(torch.long)
@@ -248,19 +229,19 @@ class MaybeResizeAndCrop(torch.nn.Module):
 
 
 class RandomApply(T.RandomApply):
-    def forward(self, img1, img2, flow, valid):
+    def forward(self, img1, img2, flow, valid_flow_mask):
         if self.p < torch.rand(1):
-            return img1, img2, flow, valid
+            return img1, img2, flow, valid_flow_mask
         for t in self.transforms:
-            img1, img2, flow, valid = t(img1, img2, flow, valid)
-        return img1, img2, flow, valid
+            img1, img2, flow, valid_flow_mask = t(img1, img2, flow, valid_flow_mask)
+        return img1, img2, flow, valid_flow_mask
 
 
 class Compose:
     def __init__(self, transforms):
         self.transforms = transforms
 
-    def __call__(self, img1, img2, flow, valid):
+    def __call__(self, img1, img2, flow, valid_flow_mask):
         for t in self.transforms:
-            img1, img2, flow, valid = t(img1, img2, flow, valid)
-        return img1, img2, flow, valid
+            img1, img2, flow, valid_flow_mask = t(img1, img2, flow, valid_flow_mask)
+        return img1, img2, flow, valid_flow_mask

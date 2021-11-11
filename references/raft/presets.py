@@ -9,7 +9,6 @@ class OpticalFlowPresetEval(torch.nn.Module):
         self.transforms = T.Compose(
             [
                 T.ToTensor(),
-                T.CheckChannels(),
                 T.Scale(),
                 T.ValidateModelInput(),
             ]
@@ -40,7 +39,6 @@ class OpticalFlowPresetTrain(torch.nn.Module):
 
         transforms = [
             T.ToTensor(),
-            T.CheckChannels(),
             T.AsymmetricColorJitter(
                 brightness=brightness, contrast=contrast, saturation=saturation, hue=hue, p=asymmetric_jitter_prob
             ),

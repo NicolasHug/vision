@@ -97,12 +97,12 @@ def validate_sintel(model, args):
             padder = InputPadder(image1.shape)
             image1, image2 = padder.pad(image1, image2)
 
-            flow_predictions = model(image1, image2, num_flow_udpates=32)
+            flow_predictions = model(image1, image2, num_flow_updates=32)
             flow_pred = flow_predictions[-1]
 
             flow_pred = padder.unpad(flow_pred).cpu()
 
-            epe = torch.sum((flow_pred - flow_gt) ** 2, dim=1).sqrt()
+            epe = ((flow_pred - flow_gt) ** 2).sum(dim=1).sqrt()
 
             logger.meters["epe"].update(epe.mean().item(), n=epe.numel())
             for distance in (1, 3, 5):
@@ -154,22 +154,21 @@ def validate_kitti(model, args):
     header = "Kitti val"
 
     for blob in logger.log(val_loader, header=header, sync=False, verbose=False):
-        image1, image2, flow_gt, valid_gt = blob
+        image1, image2, flow_gt, valid_flow_mask = blob
         image1 = image1.cuda()
         image2 = image2.cuda()
-        valid = valid_gt >= 0.5  # TODO: make it a boolean mask from the start
 
         padder = InputPadder(image1.shape, mode="kitti")
         image1, image2 = padder.pad(image1, image2)
 
-        predictions = model(image1, image2, num_flow_udpates=24)
+        predictions = model(image1, image2, num_flow_updates=24)
         flow = predictions[-1]
         flow = padder.unpad(flow).cpu()
 
-        epe = torch.sum((flow - flow_gt) ** 2, dim=1).sqrt()
-        relative_epe = epe / torch.sum(flow_gt ** 2, dim=1).sqrt()
+        epe = ((flow - flow_gt) ** 2).sum(dim=1).sqrt()
+        relative_epe = epe / (flow_gt ** 2).sum(dim=1).sqrt()
 
-        epe, relative_epe = epe[valid], relative_epe[valid]
+        epe, relative_epe = epe[valid_flow_mask], relative_epe[valid_flow_mask]
         bad_predictions = ((epe > 3) & (relative_epe > 0.05)).float()
 
         # note the n=1 for per_image_epe: we compute an average over averages. We first average within each image and
@@ -266,10 +265,10 @@ def main(args):
 
             optimizer.zero_grad()
 
-            image1, image2, flow, valid = (x.cuda() for x in data_blob)
-            flow_predictions = model(image1, image2, num_flow_updates=args.num_flow_udpates)
+            image1, image2, flow, valid_flow_mask = (x.cuda() for x in data_blob)
+            flow_predictions = model(image1, image2, num_flow_updates=args.num_flow_updates)
 
-            loss, metrics = sequence_loss(flow_predictions, flow, valid, args.gamma)
+            loss, metrics = sequence_loss(flow_predictions, flow, valid_flow_mask, args.gamma)
             loss.backward()
 
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)

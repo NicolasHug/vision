@@ -38,7 +38,10 @@ class FlowDataset(ABC, VisionDataset):
         self._image_list = []
 
     def _read_img(self, file_name):
-        return Image.open(file_name)
+        img = Image.open(file_name)
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+        return img
 
     @abstractmethod
     def _read_flow(self, file_name):
@@ -63,6 +66,7 @@ class FlowDataset(ABC, VisionDataset):
             img1, img2, flow, valid_flow_mask = self.transforms(img1, img2, flow, valid_flow_mask)
 
         if self._has_builtin_flow_mask or valid_flow_mask is not None:
+            # TODO: Add note in docstrings about the "or valid_flow_mask" part, i.e. it can be generated in the transforms
             return img1, img2, flow, valid_flow_mask
         else:
             return img1, img2, flow
@@ -459,6 +463,7 @@ def _read_16bits_png_with_flow_and_valid_mask(file_name):
     flow_and_valid = _read_png_16(file_name).to(torch.float32)
     flow, valid_flow_mask = flow_and_valid[:2, :, :], flow_and_valid[2, :, :]
     flow = (flow - 2 ** 15) / 64  # This conversion is explained somewhere on the kitti archive
+    valid_flow_mask = valid_flow_mask.bool()
 
     # For consistency with other datasets, we convert to numpy
     return flow.numpy(), valid_flow_mask.numpy()

@@ -184,26 +184,26 @@ class MetricLogger(object):
         self.tb_writer.close()
 
 
-def sequence_loss(flow_preds, flow_gt, valid, gamma=0.8, max_flow=400):
+def sequence_loss(flow_preds, flow_gt, valid_flow_mask, gamma=0.8, max_flow=400):
     """Loss function defined over sequence of flow predictions"""
 
     if gamma > 1:
         raise ValueError(f"Gamma should be < 1, got {gamma}.")
 
-    n_predictions = len(flow_preds)
-    flow_loss = 0.0
-
     # exlude invalid pixels and extremely large diplacements
-    mag = torch.sum(flow_gt ** 2, dim=1).sqrt()
-    valid = (valid >= 0.5) & (mag < max_flow)
+    norm_2 = torch.sum(flow_gt ** 2, dim=1).sqrt()
+    valid_flow_mask = valid_flow_mask & (norm_2 < max_flow)
 
-    for i in range(n_predictions):
-        i_weight = gamma ** (n_predictions - i - 1)
-        i_loss = (flow_preds[i] - flow_gt).abs()
-        flow_loss += i_weight * (valid[:, None] * i_loss).mean()
+    flow_loss = 0
+    num_predictions = len(flow_preds)
+    for i, flow_pred in enumerate(flow_preds):
+        weight = gamma ** (num_predictions - i - 1)
+        abs_diff = (flow_pred - flow_gt).abs()
+        flow_loss += weight * (abs_diff * valid_flow_mask[:, None, :, :]).mean()
 
-    epe = torch.sum((flow_preds[-1] - flow_gt) ** 2, dim=1).sqrt()
-    epe = epe.view(-1)[valid.view(-1)]
+    last_pred = flow_preds[-1]
+    epe = ((last_pred - flow_gt) ** 2).sum(dim=1).sqrt()
+    epe = epe[valid_flow_mask]
 
     metrics = {
         "flow_loss": flow_loss,
