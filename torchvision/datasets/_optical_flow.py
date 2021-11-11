@@ -71,6 +71,7 @@ class FlowDataset(ABC, VisionDataset):
         return len(self._image_list)
 
     def __rmul__(self, v):
+        # TODO: avoid inplace with return ConcatDataset([self] * v)
         self._flow_list = v * self._flow_list
         self._image_list = v * self._image_list
         return self

@@ -4,7 +4,7 @@ from pathlib import Path
 import torch
 from presets import OpticalFlowPresetTrain, OpticalFlowPresetEval
 from torch.cuda.amp import GradScaler
-from torchvision.datasets import KittiFlow, FlyingChairs, FlyingThings3D, Sintel
+from torchvision.datasets import KittiFlow, FlyingChairs, FlyingThings3D, Sintel, HD1K
 from torchvision.models.video import RAFT
 from utils import MetricLogger, setup_ddp, sequence_loss, InputPadder
 
@@ -25,6 +25,22 @@ def get_train_dataset(stage):
         things_clean = FlyingThings3D(root=DATASET_ROOT, split="train", pass_name="clean", transforms=transforms)
         sintel = Sintel(root=DATASET_ROOT, split="train", pass_name="both", transforms=transforms)
         return 100 * sintel + things_clean
+        # TODO: use distributed weighted sampler
+
+    elif stage == "sintel_skh":  # S + K + H as from paper
+        crop_size = (368, 768)
+        transforms = OpticalFlowPresetTrain(crop_size=crop_size, min_scale=-0.2, max_scale=0.6, do_flip=True)
+
+        things_clean = FlyingThings3D(root=DATASET_ROOT, split="train", pass_name="clean", transforms=transforms)
+        sintel = Sintel(root=DATASET_ROOT, split="train", pass_name="both", transforms=transforms)
+
+        kitti_transforms = OpticalFlowPresetTrain(crop_size=crop_size, min_scale=-0.3, max_scale=0.5, do_flip=True)
+        kitti = KittiFlow(root=DATASET_ROOT, split="train", transforms=kitti_transforms)
+
+        hd1k_transforms = OpticalFlowPresetTrain(crop_size=crop_size, min_scale=-0.5, max_scale=0.2, do_flip=True)
+        hd1k = HD1K(root=DATASET_ROOT, split="train", transforms=hd1k_transforms)
+
+        return 100 * sintel + 200 * kitti + 5 * hd1k + things_clean
     elif stage == "kitti":
         transforms = OpticalFlowPresetTrain(
             # resize and crop params
@@ -42,6 +58,10 @@ def get_train_dataset(stage):
             asymmetric_jitter_prob=0,
         )
         return KittiFlow(root=DATASET_ROOT, split="train", transforms=transforms)
+    elif stage == "hd1k":
+        transforms = OpticalFlowPresetTrain(crop_size=(368, 768), min_scale=-0.5, max_scale=0.2, do_flip=True)
+        hd1k = HD1K(root=DATASET_ROOT, split="train", transforms=transforms)
+        return hd1k
     else:
         raise ValueError(f"Unknown stage {stage}")
 
@@ -383,5 +403,10 @@ if __name__ == "__main__":
     # for e in d:
     #     print(len(e))
     #     print(e[-1] is None)
+
+    # transforms = OpticalFlowPresetTrain(crop_size=(368, 768), min_scale=-0.5, max_scale=0.2, do_flip=True)
+    # d = HD1K(root=DATASET_ROOT, split="train", transforms=transforms)
+    # for e in d:
+    #     print("blah", len(e), e[-1] is None, e[0].shape, e[1].shape)
 
     main(args)

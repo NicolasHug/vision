@@ -34,17 +34,26 @@ class MakeValidFlowMask(torch.nn.Module):
 
     def forward(self, img1, img2, flow, valid):
         if flow is not None and valid is None:
+            #TODO: use logical and on whole tensor
             valid = ((flow[0, :, :].abs() < self.threshold) & (flow[1, :, :].abs() < self.threshold)).float()
         return img1, img2, flow, valid
 
 
-class DropAlphaChannel(torch.nn.Module):
+class CheckChannels(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
     def forward(self, img1, img2, flow, valid):
+        # Drop alpha channel if it exists
         img1 = img1[:3, :, :]
         img2 = img2[:3, :, :]
+
+        # Convert grayscale images to 3 channels
+        # TODO: convert image with PIL first in dataset
+        if img1.shape[0] == 1:
+            img1 = img1.repeat(3, 1, 1)
+            img2 = img2.repeat(3, 1, 1)
+
         return img1, img2, flow, valid
 
 

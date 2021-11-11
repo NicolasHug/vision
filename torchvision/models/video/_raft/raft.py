@@ -5,7 +5,11 @@ import torch.nn.functional as F
 from .utils import bilinear_sampler, coords_grid, upflow8
 
 
+# TODO: strings -> callables
+
+
 class ResidualBlock(nn.Module):
+    #TODO: This is very similar to resnet except for one call to relu
     def __init__(self, in_planes, planes, norm_fn, stride=1):
         super().__init__()
 
@@ -127,6 +131,7 @@ class BasicMotionEncoder(nn.Module):
 
 
 class SepConvGRU(nn.Module):
+    #TODO :check core implem?
     def __init__(self, hidden_dim=128, input_dim=192 + 128):
         super().__init__()
         self.convz1 = nn.Conv2d(hidden_dim + input_dim, hidden_dim, (1, 5), padding=(0, 2))
