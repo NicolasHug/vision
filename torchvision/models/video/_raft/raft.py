@@ -5,28 +5,20 @@ import torch.nn.functional as F
 from .utils import bilinear_sampler, coords_grid, upflow8
 
 
-# TODO: strings -> callables
-
-
 class ResidualBlock(nn.Module):
-    # TODO: This is very similar to resnet except for one call to relu
-    def __init__(self, in_planes, planes, norm_fn, stride=1):
+    # TODO: This is very similar to resnet.BasicBlock except for one call to relu
+    def __init__(self, in_planes, planes, norm_layer, stride=1):
         super().__init__()
 
-        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, padding=1, stride=stride)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, padding=1)
+        # Note: bias=False because batchnorm would cancel the bias anyway
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, padding=1, stride=stride, bias=False)
+        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, padding=1, bias=False)
         self.relu = nn.ReLU(inplace=True)
 
-        if norm_fn == "batch":
-            self.norm1 = nn.BatchNorm2d(planes)
-            self.norm2 = nn.BatchNorm2d(planes)
-            if not stride == 1:
-                self.norm3 = nn.BatchNorm2d(planes)
-        elif norm_fn == "instance":
-            self.norm1 = nn.InstanceNorm2d(planes)
-            self.norm2 = nn.InstanceNorm2d(planes)
-            if not stride == 1:
-                self.norm3 = nn.InstanceNorm2d(planes)
+        self.norm1 = norm_layer(planes)
+        self.norm2 = norm_layer(planes)
+        if not stride == 1:
+            self.norm3 = norm_layer(planes)
 
         if stride == 1:
             self.downsample = None
@@ -45,18 +37,13 @@ class ResidualBlock(nn.Module):
 
 
 class BasicEncoder(nn.Module):
-    def __init__(self, output_dim=128, norm_fn="batch"):
+    def __init__(self, output_dim=128, norm_layer=nn.BatchNorm2d):
         super().__init__()
-        self.norm_fn = norm_fn
+        self.norm_layer = norm_layer
 
-        if self.norm_fn == "batch":
-            self.norm1 = nn.BatchNorm2d(64)
-        elif self.norm_fn == "instance":
-            self.norm1 = nn.InstanceNorm2d(64)
-        else:
-            raise ValueError(f"Unknown value {norm_fn} for norm_fn param")
+        self.norm1 = self.norm_layer(64)
 
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3)
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
         self.relu1 = nn.ReLU(inplace=True)
 
         self.in_planes = 64
@@ -77,8 +64,8 @@ class BasicEncoder(nn.Module):
                     nn.init.constant_(m.bias, 0)
 
     def _make_layer(self, dim, stride=1):
-        layer1 = ResidualBlock(self.in_planes, dim, norm_fn=self.norm_fn, stride=stride)
-        layer2 = ResidualBlock(dim, dim, norm_fn=self.norm_fn, stride=1)
+        layer1 = ResidualBlock(self.in_planes, dim, norm_layer=self.norm_layer, stride=stride)
+        layer2 = ResidualBlock(dim, dim, norm_layer=self.norm_layer, stride=1)
         layers = (layer1, layer2)
 
         self.in_planes = dim
@@ -251,8 +238,8 @@ class RAFT(nn.Module):
         self.corr_radius = corr_levels = 4
 
         # feature network, context network, and update block
-        self.fnet = BasicEncoder(output_dim=256, norm_fn="instance")
-        self.cnet = BasicEncoder(output_dim=(self.hidden_dim + self.context_dim), norm_fn="batch")
+        self.fnet = BasicEncoder(output_dim=256, norm_layer=nn.InstanceNorm2d)
+        self.cnet = BasicEncoder(output_dim=(self.hidden_dim + self.context_dim), norm_layer=nn.BatchNorm2d)
         motion_encoder = BasicMotionEncoder(corr_levels=corr_levels, corr_radius=self.corr_radius)
         self.update_block = BasicUpdateBlock(motion_encoder=motion_encoder, hidden_dim=self.hidden_dim)
 
