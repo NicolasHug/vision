@@ -11,8 +11,8 @@ class ResidualBlock(nn.Module):
         super().__init__()
 
         # Note: bias=False because the norm would cancel the bias anyway
-        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, padding=1, stride=stride, bias=False)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, padding=1, stride=stride, bias=True)
+        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, padding=1, bias=True)
         self.relu = nn.ReLU(inplace=True)
 
         self.norm1 = norm_layer(planes)
@@ -30,6 +30,7 @@ class ResidualBlock(nn.Module):
         y = x
         y = self.relu(self.norm1(self.conv1(y)))
         y = self.relu(self.norm2(self.conv2(y)))
+        # y = self.norm2(self.conv2(y))
 
         if self.downsample is not None:
             x = self.downsample(x)
@@ -44,7 +45,7 @@ class BasicEncoder(nn.Module):
 
         self.norm1 = self.norm_layer(64)
 
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=True)
         self.relu1 = nn.ReLU(inplace=True)
 
         self.in_planes = 64
@@ -181,6 +182,7 @@ class BasicUpdateBlock(nn.Module):
         # and https://github.com/princeton-vl/RAFT/issues/119
         # Try removing it
         mask = 0.25 * self.mask(net)
+        # mask = self.mask(net)
         return net, mask, delta_flow
 
 

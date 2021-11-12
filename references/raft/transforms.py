@@ -38,14 +38,23 @@ class MakeValidFlowMask(torch.nn.Module):
             valid_flow_mask = (flow.abs() < self.threshold).all(axis=0)
         return img1, img2, flow, valid_flow_mask
 
+class Scale(torch.nn.Module):  # TODO: remove
 
+    def forward(self, img1, img2, flow, valid_flow_mask):
+        img1 = F.convert_image_dtype(img1, dtype=torch.float32) * 2 - 1
+        img2 = F.convert_image_dtype(img2, dtype=torch.float32) * 2 - 1
+
+        img1 = img1.contiguous()
+        img2 = img2.contiguous()
+
+        return img1, img2, flow, valid_flow_mask
 class ToTensor(torch.nn.Module):
     def forward(self, img1, img2, flow, valid_flow_mask):
         img1 = F.pil_to_tensor(img1)
-        img1 = F.convert_image_dtype(img1, dtype=torch.float32) * 2 - 1
+        # img1 = F.convert_image_dtype(img1, dtype=torch.float32) * 2 - 1
 
         img2 = F.pil_to_tensor(img2)
-        img2 = F.convert_image_dtype(img2, dtype=torch.float32) * 2 - 1
+        # img2 = F.convert_image_dtype(img2, dtype=torch.float32) * 2 - 1
 
         if flow is not None:
             flow = torch.from_numpy(flow)
