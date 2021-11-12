@@ -1,10 +1,21 @@
 #!/bin/bash
+#SBATCH --partition=train
+#SBATCH --cpus-per-task=32
+#SBATCH --gpus-per-node=2
+#SBATCH --time=70:00:00
+#SBATCH --nodes=1
+#SBATCH --output=/data/home/nicolashug/cluster/experiments/slurm-%j.out
+#SBATCH --error=/data/home/nicolashug/cluster/experiments/slurm-%j.err
+
+
 
 n_gpus=2
 n_nodes=1
 
-output_dir=$1/id_$SLURM_JOB_ID
+output_dir=~/cluster/experiments/id_$SLURM_JOB_ID
 mkdir -p $output_dir
+
+
 
 this_script=./train.sh  # depends where you call it from
 cp $this_script $output_dir
