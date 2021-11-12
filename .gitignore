@@ -41,4 +41,9 @@ xcuserdata/
 # direnv
 .direnv
 .envrc
+
+
+# Remove all this
 .dumbo.json
+test/expect/ModelTester.test_RAFT_expect.pkl
+notes
