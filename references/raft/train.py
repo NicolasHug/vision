@@ -327,7 +327,7 @@ def get_args_parser(add_help=True):
         help="A path to previously saved weights. Used to re-start training from, or evaluate a pre-saved model.",
     )
 
-    parser.add_argument("--num-workers", type=int, default=16, help="Number of workers for the data loading part.")
+    parser.add_argument("--num-workers", type=int, default=12, help="Number of workers for the data loading part.")
 
     parser.add_argument(
         "--train-dataset",
