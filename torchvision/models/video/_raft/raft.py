@@ -29,8 +29,8 @@ class ResidualBlock(nn.Module):
     def forward(self, x):
         y = x
         y = self.relu(self.norm1(self.conv1(y)))
-        # y = self.relu(self.norm2(self.conv2(y)))
-        y = self.norm2(self.conv2(y))
+        y = self.relu(self.norm2(self.conv2(y)))
+        # y = self.norm2(self.conv2(y))
 
         if self.downsample is not None:
             x = self.downsample(x)
@@ -179,8 +179,8 @@ class BasicUpdateBlock(nn.Module):
         delta_flow = self.flow_head(net)
 
         # # scale mask to balance gradients
-        # mask = 0.25 * self.mask(net)
-        mask = self.mask(net)
+        mask = 0.25 * self.mask(net)
+        # mask = self.mask(net)
         return net, mask, delta_flow
 
 
