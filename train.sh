@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --partition=train
-#SBATCH --cpus-per-task=32
+#SBATCH --cpus-per-task=24
 #SBATCH --gpus-per-node=2
 #SBATCH --time=70:00:00
 #SBATCH --nodes=1
