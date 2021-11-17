@@ -170,8 +170,8 @@ def validate_kitti(model, args):
         # note the n=1 for per_image_epe: we compute an average over averages. We first average within each image and
         # then average over the images. This is in contrast with the other epe computations of e.g. Sintel, where we
         # average only once over all the pixels of all images.
-        logger.meters["per_image_epe"].update(epe.mean().item(), n=1)
-        logger.meters["f1"].update(bad_predictions.mean().item(), n=bad_predictions.numel())
+        logger.meters["per_image_epe"].update(epe.mean().item(), n=1)  # f1-epe in paper
+        logger.meters["f1"].update(bad_predictions.mean().item(), n=bad_predictions.numel())  # f1-all in paper
 
     logger.synchronize_between_processes()
     print(header, logger)
