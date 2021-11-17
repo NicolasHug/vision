@@ -22,7 +22,7 @@ class ResidualBlock(nn.Module):
             self.downsample = None
         else:
             self.downsample = nn.Sequential(
-                nn.Conv2d(in_planes, planes, kernel_size=1, stride=stride),
+                nn.Conv2d(in_planes, planes, kernel_size=1, stride=stride, bias=False),
                 norm_layer(planes)
             )
 
@@ -58,7 +58,7 @@ class BasicEncoder(nn.Module):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
-            elif isinstance(m, (nn.BatchNorm2d, nn.InstanceNorm2d, nn.GroupNorm)):
+            elif isinstance(m, (nn.BatchNorm2d, nn.InstanceNorm2d)):
                 if m.weight is not None:
                     nn.init.constant_(m.weight, 1)
                 if m.bias is not None:
