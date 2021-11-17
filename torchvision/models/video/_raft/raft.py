@@ -29,8 +29,8 @@ class ResidualBlock(nn.Module):
     def forward(self, x):
         y = x
         y = self.relu(self.norm1(self.conv1(y)))
-        y = self.relu(self.norm2(self.conv2(y)))
-        # y = self.norm2(self.conv2(y))
+        # y = self.relu(self.norm2(self.conv2(y)))
+        y = self.norm2(self.conv2(y))
 
         if self.downsample is not None:
             x = self.downsample(x)
