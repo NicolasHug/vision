@@ -4,9 +4,8 @@ from pathlib import Path
 
 import torch
 from presets import OpticalFlowPresetTrain, OpticalFlowPresetEval
-from torch.cuda.amp import GradScaler
 from torchvision.datasets import KittiFlow, FlyingChairs, FlyingThings3D, Sintel, HD1K
-from torchvision.models.video import RAFT
+from torchvision.models.video import raft
 from utils import MetricLogger, setup_ddp, sequence_loss, InputPadder, reduce_across_processes
 
 
@@ -195,7 +194,7 @@ def main(args):
 
     print(args)
 
-    model = RAFT()
+    model = raft()
     model = model.to(args.local_rank)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.local_rank])
 

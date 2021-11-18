@@ -820,12 +820,12 @@ def test_detection_model_trainable_backbone_layers(model_fn, disable_weight_load
     assert n_trainable_params == _model_tests_values[model_name]["n_trn_params_per_layer"]
 
 
-def test_raft():
-    from torchvision.models.video import RAFT
+def test_raft_lol():
+    from torchvision.models.video import raft
 
     torch.manual_seed(0)
 
-    model = RAFT().eval().to("cuda")
+    model = raft().eval().to("cuda")
     bs = 10
     img1 = torch.rand(bs, 3, 368, 496).cuda()
     img2 = torch.rand(bs, 3, 368, 496).cuda()
