@@ -36,7 +36,7 @@ class ResidualBlock(nn.Module):
         return self.relu(x + y)
 
 
-class BasicEncoder(nn.Module):
+class FeatureEncoder(nn.Module):
     def __init__(self, out_channels=256, norm_layer=nn.BatchNorm2d):
         super().__init__()
 
@@ -91,7 +91,7 @@ class BasicEncoder(nn.Module):
         return x
 
 
-class BasicMotionEncoder(nn.Module):
+class MotionEncoder(nn.Module):
     def __init__(self, corr_levels, corr_radius):
         super().__init__()
 
@@ -154,7 +154,7 @@ class FlowHead(nn.Module):
         return self.conv2(self.relu(self.conv1(x)))
 
 
-class BasicUpdateBlock(nn.Module):
+class UpdateBlock(nn.Module):
     def __init__(self, motion_encoder, hidden_dim=128):
         super().__init__()
         self.encoder = motion_encoder
@@ -251,10 +251,10 @@ class RAFT(nn.Module):
         self.corr_block = CorrBlock(num_levels=4, radius=4)
 
         # feature network, context network, and update block
-        self.fnet = BasicEncoder(out_channels=256, norm_layer=nn.InstanceNorm2d)
-        self.cnet = BasicEncoder(out_channels=(self.hidden_dim + self.context_dim), norm_layer=nn.BatchNorm2d)
-        motion_encoder = BasicMotionEncoder(corr_levels=corr_levels, corr_radius=self.corr_radius)
-        self.update_block = BasicUpdateBlock(motion_encoder=motion_encoder, hidden_dim=self.hidden_dim)
+        self.fnet = FeatureEncoder(out_channels=256, norm_layer=nn.InstanceNorm2d)
+        self.cnet = FeatureEncoder(out_channels=(self.hidden_dim + self.context_dim), norm_layer=nn.BatchNorm2d)
+        motion_encoder = MotionEncoder(corr_levels=corr_levels, corr_radius=self.corr_radius)
+        self.update_block = UpdateBlock(motion_encoder=motion_encoder, hidden_dim=self.hidden_dim)
 
     def freeze_bn(self):
         for m in self.modules():
