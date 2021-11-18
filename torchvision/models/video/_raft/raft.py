@@ -22,8 +22,7 @@ class ResidualBlock(nn.Module):
             self.downsample = None
         else:
             self.downsample = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
-                norm_layer(out_channels)
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False), norm_layer(out_channels)
             )
 
     def forward(self, x):
@@ -179,58 +178,65 @@ class BasicUpdateBlock(nn.Module):
 
 
 class CorrBlock:
-    def __init__(self, fmap1, fmap2, num_levels=4, radius=4):
+    def __init__(self, num_levels=4, radius=4):
         self.radius = radius
         self.num_levels = num_levels
         self.corr_pyramid = []
 
-        # all pairs correlation
-        corr = CorrBlock.corr(fmap1, fmap2)
+    def build_pyramid(self, fmap1, fmap2):
+        """Build the correlation pyramid from two feature maps.
 
-        batch, h1, w1, dim, h2, w2 = corr.shape
-        corr = corr.reshape(batch * h1 * w1, dim, h2, w2)
-        self.corr_pyramid.append(corr)
-        for _ in range(num_levels - 1):
-            corr = F.avg_pool2d(corr, 2, stride=2)
-            self.corr_pyramid.append(corr)
+        The correlation volume is first computed as the dot product of each pair (pixel_in_fmap1, pixel_in_fmap2)
+        The last 2 dimensions of the correlation volume are then pooled num_levels times at different resolutions
+        to build the correlation pyramid.
+        """
 
-    def __call__(self, coords):
-        coords = coords.permute(0, 2, 3, 1)
-        batch, h1, w1, _ = coords.shape
+        def compute_corr_volume(fmap1, fmap2):
+            batch_size, num_channels, h, w = fmap1.shape
+            fmap1 = fmap1.view(batch_size, num_channels, h * w)
+            fmap2 = fmap2.view(batch_size, num_channels, h * w)
 
-        dx = torch.linspace(-self.radius, self.radius, 2 * self.radius + 1)
-        dy = torch.linspace(-self.radius, self.radius, 2 * self.radius + 1)
-        delta = torch.stack(torch.meshgrid(dy, dx, indexing="ij"), axis=-1).to(coords.device)
-        delta_lvl = delta.view(1, 2 * self.radius + 1, 2 * self.radius + 1, 2)
-        centroid_lvl = coords.reshape(batch * h1 * w1, 1, 1, 2)
+            corr = torch.matmul(fmap1.transpose(1, 2), fmap2)
+            corr = corr.view(batch_size, h, w, 1, h, w)
+            return corr / torch.sqrt(torch.tensor(num_channels))
 
-        out_pyramid = []
-        for corr in self.corr_pyramid:
-            coords_lvl = centroid_lvl + delta_lvl
-            corr = bilinear_sampler(corr, coords_lvl)
-            corr = corr.view(batch, h1, w1, -1)
-            out_pyramid.append(corr)
-            centroid_lvl = centroid_lvl / 2
+        torch._assert(fmap1.shape == fmap2.shape, "Input feature maps should have the same shapes")
+        corr_volume = compute_corr_volume(fmap1, fmap2)
 
-        out = torch.cat(out_pyramid, dim=-1)
-        out = out.permute(0, 3, 1, 2).contiguous()
+        batch_size, h, w, num_channels, _, _ = corr_volume.shape  # _, _ = h, w
+        corr_volume = corr_volume.reshape(batch_size * h * w, num_channels, h, w)
+        self.corr_pyramid.append(corr_volume)
+        for _ in range(self.num_levels - 1):
+            corr_volume = F.avg_pool2d(corr_volume, kernel_size=2, stride=2)
+            self.corr_pyramid.append(corr_volume)
+
+    def index_pyramid(self, centroids_coords):
+        # The neighborhood of a centroid pixel x' is {x' + delta, ||delta||_inf < radius}
+        # so it's a square surrounding x', with size 2 * radius + 1
+        # The paper claims that it's ||.||_1 instead of ||.||_inf but the original code uses infinity-norm.
+        neighborhood_size = 2 * self.radius + 1
+        di = dj = torch.linspace(-self.radius, self.radius, neighborhood_size)
+        delta = torch.stack(torch.meshgrid(di, dj, indexing="ij"), axis=-1).to(centroids_coords.device)
+        delta = delta.view(1, neighborhood_size, neighborhood_size, 2)
+
+        batch_size, _, h, w = centroids_coords.shape  # _ = 2
+        centroids_coords = centroids_coords.permute(0, 2, 3, 1).reshape(batch_size * h * w, 1, 1, 2)
+
+        indexed_pyramid = []
+        for corr_volume in self.corr_pyramid:
+            sampling_coords = centroids_coords + delta  # end shape is (batch_size * h * w, neigh_size, neigh_size, 2)
+            indexed_corr_volume = bilinear_sampler(corr_volume, sampling_coords).view(batch_size, h, w, -1)
+            indexed_pyramid.append(indexed_corr_volume)
+            centroids_coords = centroids_coords / 2
+
+        indexed_pyramid = torch.cat(indexed_pyramid, dim=-1).permute(0, 3, 1, 2).contiguous()
 
         torch._assert(
-            out.shape[1] == self.num_levels * (2 * self.radius + 1)**2,
-            "Number of output channels should be num_level * size_of_neighborhood"
+            indexed_pyramid.shape == (batch_size, self.num_levels * neighborhood_size ** 2, h, w),
+            "Output shape of index pyramid is incorrect",
         )
 
-        return out
-
-    @staticmethod
-    def corr(fmap1, fmap2):
-        batch, dim, ht, wd = fmap1.shape
-        fmap1 = fmap1.view(batch, dim, ht * wd)
-        fmap2 = fmap2.view(batch, dim, ht * wd)
-
-        corr = torch.matmul(fmap1.transpose(1, 2), fmap2)
-        corr = corr.view(batch, ht, wd, 1, ht, wd)
-        return corr / torch.sqrt(torch.tensor(dim))
+        return indexed_pyramid
 
 
 class RAFT(nn.Module):
@@ -241,6 +247,8 @@ class RAFT(nn.Module):
         self.context_dim = 128
 
         self.corr_radius = corr_levels = 4
+
+        self.corr_block = CorrBlock(num_levels=4, radius=4)
 
         # feature network, context network, and update block
         self.fnet = BasicEncoder(out_channels=256, norm_layer=nn.InstanceNorm2d)
@@ -275,7 +283,7 @@ class RAFT(nn.Module):
         # run the feature network
         fmap1, fmap2 = self.fnet(image1, image2)
 
-        corr_fn = CorrBlock(fmap1, fmap2, radius=self.corr_radius)
+        self.corr_block.build_pyramid(fmap1, fmap2)
 
         # run the context network
         cnet = self.cnet(image1)
@@ -290,7 +298,7 @@ class RAFT(nn.Module):
         flow_predictions = []
         for _ in range(num_flow_updates):
             coords1 = coords1.detach()
-            corr = corr_fn(coords1)  # index correlation volume
+            corr = self.corr_block.index_pyramid(coords1)
 
             flow = coords1 - coords0
             net, up_mask, delta_flow = self.update_block(net, inp, corr, flow)

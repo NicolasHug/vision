@@ -286,6 +286,7 @@ def setup_ddp(args):
         init_method=args.dist_url,
     )
 
+
 def reduce_across_processes(val):
     t = torch.tensor(val, device="cuda")
     dist.barrier()
