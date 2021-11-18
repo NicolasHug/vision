@@ -191,7 +191,7 @@ class CorrBlock:
 
     def index_pyramid(self, centroids_coords):
         """Return correlation features by indexing from the pyramid."""
-        # The neighborhood of a centroid pixel x' is {x' + delta, ||delta||_inf < radius}
+        # The neighborhood of a centroid pixel x' is {x' + delta, ||delta||_inf <= radius}
         # so it's a square surrounding x', with size 2 * radius + 1
         # The paper claims that it's ||.||_1 instead of ||.||_inf but the original code uses infinity-norm.
         neighborhood_size = 2 * self.radius + 1
