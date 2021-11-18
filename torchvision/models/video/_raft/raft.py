@@ -7,23 +7,23 @@ from .utils import bilinear_sampler, coords_grid, upflow8
 
 class ResidualBlock(nn.Module):
     # TODO: This is very similar to resnet.BasicBlock except for one call to relu
-    def __init__(self, in_planes, planes, norm_layer, stride=1):
+    def __init__(self, in_channels, out_channels, norm_layer, stride=1):
         super().__init__()
 
         # Note: bias=False because batchnorm would cancel the bias anyway
-        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, padding=1, stride=stride, bias=False)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, stride=stride, bias=False)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=False)
         self.relu = nn.ReLU(inplace=True)
 
-        self.norm1 = norm_layer(planes)
-        self.norm2 = norm_layer(planes)
+        self.norm1 = norm_layer(out_channels)
+        self.norm2 = norm_layer(out_channels)
 
         if stride == 1:
             self.downsample = None
         else:
             self.downsample = nn.Sequential(
-                nn.Conv2d(in_planes, planes, kernel_size=1, stride=stride, bias=False),
-                norm_layer(planes)
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
+                norm_layer(out_channels)
             )
 
     def forward(self, x):
@@ -39,22 +39,18 @@ class ResidualBlock(nn.Module):
 
 
 class BasicEncoder(nn.Module):
-    def __init__(self, output_dim=128, norm_layer=nn.BatchNorm2d):
+    def __init__(self, out_channels=256, norm_layer=nn.BatchNorm2d):
         super().__init__()
-        self.norm_layer = norm_layer
-
-        self.norm1 = self.norm_layer(64)
 
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.norm1 = norm_layer(64)
         self.relu1 = nn.ReLU(inplace=True)
 
-        self.in_planes = 64
-        self.layer1 = self._make_layer(64, stride=1)
-        self.layer2 = self._make_layer(96, stride=2)
-        self.layer3 = self._make_layer(128, stride=2)
+        self.layer1 = self._make_layer(64, 64, norm_layer=norm_layer, downsample=False)
+        self.layer2 = self._make_layer(64, 96, norm_layer=norm_layer, downsample=True)
+        self.layer3 = self._make_layer(96, 128, norm_layer=norm_layer, downsample=True)
 
-        # output convolution
-        self.conv2 = nn.Conv2d(128, output_dim, kernel_size=1)
+        self.conv2 = nn.Conv2d(128, out_channels, kernel_size=1)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -65,13 +61,10 @@ class BasicEncoder(nn.Module):
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
 
-    def _make_layer(self, dim, stride=1):
-        layer1 = ResidualBlock(self.in_planes, dim, norm_layer=self.norm_layer, stride=stride)
-        layer2 = ResidualBlock(dim, dim, norm_layer=self.norm_layer, stride=1)
-        layers = (layer1, layer2)
-
-        self.in_planes = dim
-        return nn.Sequential(*layers)
+    def _make_layer(self, in_channels, out_channels, norm_layer, downsample):
+        resblock1 = ResidualBlock(in_channels, out_channels, norm_layer=norm_layer, stride=(2 if downsample else 1))
+        resblock2 = ResidualBlock(out_channels, out_channels, norm_layer=norm_layer, stride=1)
+        return nn.Sequential(resblock1, resblock2)
 
     def forward(self, image1, image2=None):
 
@@ -89,6 +82,9 @@ class BasicEncoder(nn.Module):
         x = self.layer3(x)
 
         x = self.conv2(x)
+
+        torch._assert(x.shape[-1] == image1.shape[-1] / 8, "The encoder should downsample H and W by 8")
+        torch._assert(x.shape[-2] == image1.shape[-2] / 8, "The encoder should downsample H and W by 8")
 
         if image2 is not None:
             batch_size = image1.shape[0]
@@ -187,6 +183,7 @@ class BasicUpdateBlock(nn.Module):
 class CorrBlock:
     def __init__(self, fmap1, fmap2, num_levels=4, radius=4):
         self.radius = radius
+        self.num_levels = num_levels
         self.corr_pyramid = []
 
         # all pairs correlation
@@ -218,7 +215,14 @@ class CorrBlock:
             centroid_lvl = centroid_lvl / 2
 
         out = torch.cat(out_pyramid, dim=-1)
-        return out.permute(0, 3, 1, 2).contiguous()
+        out = out.permute(0, 3, 1, 2).contiguous()
+
+        torch._assert(
+            out.shape[1] == self.num_levels * (2 * self.radius + 1)**2,
+            "Number of output channels should be num_level * size_of_neighborhood"
+        )
+
+        return out
 
     @staticmethod
     def corr(fmap1, fmap2):
@@ -241,8 +245,8 @@ class RAFT(nn.Module):
         self.corr_radius = corr_levels = 4
 
         # feature network, context network, and update block
-        self.fnet = BasicEncoder(output_dim=256, norm_layer=nn.InstanceNorm2d)
-        self.cnet = BasicEncoder(output_dim=(self.hidden_dim + self.context_dim), norm_layer=nn.BatchNorm2d)
+        self.fnet = BasicEncoder(out_channels=256, norm_layer=nn.InstanceNorm2d)
+        self.cnet = BasicEncoder(out_channels=(self.hidden_dim + self.context_dim), norm_layer=nn.BatchNorm2d)
         motion_encoder = BasicMotionEncoder(corr_levels=corr_levels, corr_radius=self.corr_radius)
         self.update_block = BasicUpdateBlock(motion_encoder=motion_encoder, hidden_dim=self.hidden_dim)
 
