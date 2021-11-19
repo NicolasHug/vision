@@ -38,7 +38,7 @@ class MakeValidFlowMask(torch.nn.Module):
 
 
 class Scale(torch.nn.Module):
-    # TODO: find a better name
+    # TODO: split this int oConvertImageDtype and Normalize transforms
     # ALso: Calling this before converting the images to cuda seems to affect epe quite a bit
 
     def forward(self, img1, img2, flow, valid_flow_mask):
@@ -87,6 +87,7 @@ class RandomErase(torch.nn.Module):
     def forward(self, img1, img2, flow, valid_flow_mask):
         bounds = [50, 100]
         ht, wd = img2.shape[:2]
+        # TODO: This probably doesn't work with floats because of round()
         mean_color = img2.view(3, -1).float().mean(axis=-1).round()
         for _ in range(torch.randint(1, 3, size=(1,)).item()):
             x0 = torch.randint(0, wd, size=(1,)).item()

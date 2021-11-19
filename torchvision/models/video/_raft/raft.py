@@ -7,6 +7,7 @@ from .utils import bilinear_sampler, coords_grid, upflow8
 
 class ResidualBlock(nn.Module):
     # TODO: This is very similar to resnet.BasicBlock except for one call to relu
+    # TODO: remove call to relu gives really bad results - is this because of initialization?
     def __init__(self, in_channels, out_channels, norm_layer, stride=1):
         super().__init__()
 
@@ -195,6 +196,7 @@ class CorrBlock:
         # so it's a square surrounding x', with size 2 * radius + 1
         # The paper claims that it's ||.||_1 instead of ||.||_inf but the original code uses infinity-norm.
         neighborhood_size = 2 * self.radius + 1
+        # TODO: benchmark to figure out whether we should make it cuda from the start
         di = torch.linspace(-self.radius, self.radius, neighborhood_size)
         dj = torch.linspace(-self.radius, self.radius, neighborhood_size)
         delta = torch.stack(torch.meshgrid(di, dj, indexing="ij"), axis=-1).to(centroids_coords.device)
@@ -206,6 +208,7 @@ class CorrBlock:
         indexed_pyramid = []
         for corr_volume in self.corr_pyramid:
             sampling_coords = centroids_coords + delta  # end shape is (batch_size * h * w, neigh_size, neigh_size, 2)
+            # TODO: Could this be optimized a bit?
             indexed_corr_volume = bilinear_sampler(corr_volume, sampling_coords).view(batch_size, h, w, -1)
             indexed_pyramid.append(indexed_corr_volume)
             centroids_coords = centroids_coords / 2
@@ -230,6 +233,8 @@ def raft():
     radius = 4
     corr_block = CorrBlock(num_levels=num_levels, radius=radius)
 
+    # TODO: a bit sad we have to re-compute this
+    # Make this out_channels attribute
     corr_block_out_channels = num_levels * (2 * radius + 1) ** 2  # see comments in index_pyramid()
     motion_encoder_out = 128
     motion_encoder = MotionEncoder(in_channels=corr_block_out_channels, out_channels=motion_encoder_out)
@@ -267,7 +272,9 @@ class RAFT(nn.Module):
         self.corr_block = corr_block
         self.update_block = update_block
 
-        self.mask_predictor = mask_predictor  # Should this be called mask_head?
+        # TODO Should this be called mask_head?
+        # TODO Should it be part of the flow updater?
+        self.mask_predictor = mask_predictor  
 
     def freeze_bn(self):
         for m in self.modules():
@@ -299,6 +306,7 @@ class RAFT(nn.Module):
 
         # TODO: should these be different blocks??
         context_out = self.context_encoder(image1)
+        # TODO use chunk
         hidden_state, context = torch.split(context_out, (context_out.shape[1] // 2, context_out.shape[1] // 2), dim=1)
         hidden_state = torch.tanh(hidden_state)
         context = torch.relu(context)
