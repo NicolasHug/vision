@@ -313,20 +313,19 @@ class RAFT(nn.Module):
 
         coords0 = coords_grid(batch_size, h // 8, w // 8).cuda()
         coords1 = coords_grid(batch_size, h // 8, w // 8).cuda()
-        flow = coords1 - coords0  # initial flow is zero everywhere
 
         flow_predictions = []
         for _ in range(num_flow_updates):
             coords1 = coords1.detach()  # Don't backpropagate gradients through this branch, see paper
             corr_features = self.corr_block.index_pyramid(centroids_coords=coords1)
 
+            flow = coords1 - coords0
             hidden_state, delta_flow = self.update_block(hidden_state, context, corr_features, flow)
 
             coords1 = coords1 + delta_flow
-            flow = coords1 - coords0
 
             up_mask = self.mask_predictor(hidden_state)
-            upsampled_flow = self._upsample_flow(flow=flow, up_mask=up_mask)
+            upsampled_flow = self._upsample_flow(flow=(coords1 - coords0), up_mask=up_mask)
             flow_predictions.append(upsampled_flow)
 
         return flow_predictions
