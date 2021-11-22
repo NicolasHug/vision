@@ -23,7 +23,7 @@ class ResidualBlock(nn.Module):
             self.downsample = None
         else:
             self.downsample = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=True), norm_layer(out_channels)
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False), norm_layer(out_channels)
             )
 
     def forward(self, x):
@@ -324,7 +324,7 @@ class RAFT(nn.Module):
 
             coords1 = coords1 + delta_flow
 
-            up_mask = self.mask_predictor(hidden_state)
+            up_mask = 0.25 * self.mask_predictor(hidden_state)
             upsampled_flow = self._upsample_flow(flow=(coords1 - coords0), up_mask=up_mask)
             flow_predictions.append(upsampled_flow)
 
