@@ -300,18 +300,17 @@ class RAFT(nn.Module):
     def forward(self, image1, image2, num_flow_updates=12):
 
         batch_size, _, h, w = image1.shape
+        torch._assert((h, w) == image2.shape[-2:], "input images should have the same shape")
         torch._assert((h % 8 == 0) and (w % 8 == 0), "input image H and W should be divisible by 8")
 
         fmaps = self.feature_encoder(torch.cat([image1, image2], dim=0))
-        fmap1, fmap2 = torch.split(fmaps, (batch_size, batch_size), dim=0)
+        fmap1, fmap2 = torch.chunk(fmaps, chunks=2, dim=0)
         torch._assert(fmap1.shape[-2:] == (h / 8, w / 8), "The encoder should downsample H and W by 8")
 
         self.corr_block.build_pyramid(fmap1, fmap2)
 
-        # TODO: should these be different blocks??
         context_out = self.context_encoder(image1)
-        # TODO use chunk
-        hidden_state, context = torch.split(context_out, (context_out.shape[1] // 2, context_out.shape[1] // 2), dim=1)
+        hidden_state, context = torch.chunk(context_out, chunks=2, dim=1)
         hidden_state = torch.tanh(hidden_state)
         context = torch.relu(context)
 
