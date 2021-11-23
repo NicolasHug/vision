@@ -6,14 +6,19 @@ from .utils import bilinear_sampler, coords_grid, upflow8
 
 
 class ResidualBlock(nn.Module):
-    # TODO: This is very similar to resnet.BasicBlock except for one call to relu
-    # TODO: remove call to relu gives really bad results - is this because of initialization?
+    # This is pretty similar to resnet.BasicBlock except for one call to relu, and the bias terms
     def __init__(self, in_channels, out_channels, norm_layer, stride=1):
         super().__init__()
 
-        # Note: bias=False because batchnorm would cancel the bias anyway
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, stride=stride, bias=False)
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=False)
+        # Note: In general we don't need the bias terms in conv layers followed by a norm layer.
+        # But in the RAFT training reference, the BatchNorm2d layers are only activated for the first dataset,
+        # and frozen after that (see the --freeze-batch-norm param). So for BatchNorm, we still keep the biases
+        # in the conv layers. We can safely remove the biases for other norm layers like InstanceNorm, because these
+        # are never frozen.
+        bias = norm_layer is nn.BatchNorm2d
+
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, stride=stride, bias=bias)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=bias)
         self.relu = nn.ReLU(inplace=True)
 
         self.norm1 = norm_layer(out_channels)
@@ -23,7 +28,7 @@ class ResidualBlock(nn.Module):
             self.downsample = None
         else:
             self.downsample = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False), norm_layer(out_channels)
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=bias), norm_layer(out_channels)
             )
 
     def forward(self, x):
@@ -41,7 +46,8 @@ class FeatureEncoder(nn.Module):
     def __init__(self, out_channels, norm_layer=nn.BatchNorm2d):
         super().__init__()
 
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        bias = norm_layer is nn.BatchNorm2d  # see note in ResidualBlock
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=bias)
         self.norm1 = norm_layer(64)
         self.relu1 = nn.ReLU(inplace=True)
 
@@ -276,11 +282,6 @@ class RAFT(nn.Module):
         # TODO Should it be part of the flow updater?
         self.mask_predictor = mask_predictor  
 
-    def freeze_bn(self):
-        for m in self.modules():
-            if isinstance(m, nn.BatchNorm2d):
-                m.eval()
-
     def _upsample_flow(self, flow, up_mask):
         """Upsample flow field [H/8, W/8, 2] -> [H, W, 2] using convex combination"""
         N, _, H, W = flow.shape
@@ -324,7 +325,7 @@ class RAFT(nn.Module):
 
             coords1 = coords1 + delta_flow
 
-            up_mask = 0.25 * self.mask_predictor(hidden_state)
+            up_mask = self.mask_predictor(hidden_state)
             upsampled_flow = self._upsample_flow(flow=(coords1 - coords0), up_mask=up_mask)
             flow_predictions.append(upsampled_flow)
 

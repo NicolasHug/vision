@@ -6,7 +6,7 @@ import torch
 from presets import OpticalFlowPresetTrain, OpticalFlowPresetEval
 from torchvision.datasets import KittiFlow, FlyingChairs, FlyingThings3D, Sintel, HD1K
 from torchvision.models.video import raft
-from utils import MetricLogger, setup_ddp, sequence_loss, InputPadder, reduce_across_processes
+from utils import MetricLogger, setup_ddp, sequence_loss, InputPadder, reduce_across_processes, freeze_batch_norm
 
 
 # TODO: remove
@@ -205,9 +205,6 @@ def main(args):
 
     print("Parameter Count: %d" % count_parameters(model))
 
-    if args.train_dataset != "chairs":
-        model.module.freeze_bn()
-
     if args.train_dataset is None:
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
@@ -215,6 +212,8 @@ def main(args):
         return
 
     model.train()
+    if args.freeze_batch_norm:
+        freeze_batch_norm(model.module)
 
     train_dataset = get_train_dataset(args.train_dataset)
 
@@ -303,8 +302,8 @@ def main(args):
         if current_epoch % args.val_freq == 0 or done:
             validate(model, args)
             model.train()
-            if args.train_dataset != "chairs":
-                model.module.freeze_bn()
+            if args.freeze_batch_norm:
+                freeze_batch_norm(model.module)
 
     logger.close()
 
@@ -341,7 +340,9 @@ def get_args_parser(add_help=True):
 
     parser.add_argument("--lr", type=float, default=0.00002, help="Learning rate for AdamW optimizer")
     parser.add_argument("--weight-decay", type=float, default=0.00005, help="Weight decay for AdamW optimizer")
-    parser.add_argument("--adamw_eps", type=float, default=1e-8, help="eps value for AdamW optimizer")
+    parser.add_argument("--adamw-eps", type=float, default=1e-8, help="eps value for AdamW optimizer")
+
+    parser.add_argument("--freeze-batch-norm", action="store_true", help="Set BatchNorm modules of the model in eval mode.")
 
     parser.add_argument(
         "--num_flow_updates",

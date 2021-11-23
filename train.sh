@@ -69,6 +69,7 @@ torchrun --nproc_per_node $n_gpus --nnodes $n_nodes --master_port $master_port r
     --weight-decay $wdecay_things \
     --num-steps $num_steps_things \
     --num-epochs 100000 \
+    --freeze-batch-norm \
     --output-dir $things_dir\
     --resume $chairs_dir/$name_chairs.pth
 
@@ -91,6 +92,7 @@ torchrun --nproc_per_node $n_gpus --nnodes $n_nodes --master_port $master_port r
 #     --gamma $gamma_sintel_skh \
 #     --num-steps $num_steps_sintel_skh \
 #     --num-epochs 100000 \
+#     --freeze-batch-norm \
 #     --output-dir $sintel_skh_dir\
 #     --resume $things_dir/$name_things.pth
 
@@ -113,6 +115,7 @@ torchrun --nproc_per_node $n_gpus --nnodes $n_nodes --master_port $master_port r
 # #     --gamma $gamma_sintel \
 # #     --num-steps $num_steps_sintel \
 # #     --num-epochs 100000 \
+# #     --freeze-batch-norm \
 # #     --output-dir $sintel_dir\
 # #     --resume $things_dir/$name_things.pth
 
@@ -135,5 +138,6 @@ torchrun --nproc_per_node $n_gpus --nnodes $n_nodes --master_port $master_port r
 # #     --gamma $gamma_kitti \
 # #     --num-steps $num_steps_kitti \
 # #     --num-epochs 100000 \
+# #     --freeze-batch-norm \
 # #     --output-dir $kitti_dir \
 # #     --resume $sintel_dir/$name_sintel.pth
