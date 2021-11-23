@@ -214,7 +214,7 @@ class CorrBlock:
         indexed_pyramid = []
         for corr_volume in self.corr_pyramid:
             sampling_coords = centroids_coords + delta  # end shape is (batch_size * h * w, neigh_size, neigh_size, 2)
-            indexed_corr_volume = grid_sample(corr_volume, sampling_coords, align_corners=True, mode='bilinear').view(
+            indexed_corr_volume = grid_sample(corr_volume, sampling_coords, align_corners=True, mode="bilinear").view(
                 batch_size, h, w, -1
             )
             indexed_pyramid.append(indexed_corr_volume)
@@ -284,16 +284,18 @@ class RAFT(nn.Module):
         self.mask_predictor = mask_predictor
 
     def _upsample_flow(self, flow, up_mask):
-        """Upsample flow field [H/8, W/8, 2] -> [H, W, 2] using convex combination"""
-        N, _, H, W = flow.shape
-        up_mask = up_mask.view(N, 1, 9, 8, 8, H, W)
-        up_mask = torch.softmax(up_mask, dim=2)
+        """Upsample flow by a factor of 8, using convex combination weights from up_mask"""
+        # See paper page 8 and appendix B.
+        # In appendix B the picture assumes a downsample factor of 4 instead of 8.
+        batch_size, _, h, w = flow.shape
 
-        upsampled_flow = F.unfold(8 * flow, [3, 3], padding=1).view(N, 2, 9, 1, 1, H, W)
+        up_mask = up_mask.view(batch_size, 1, 9, 8, 8, h, w)
+        up_mask = torch.softmax(up_mask, dim=2)  # "convex" == weights sum to 1
 
+        upsampled_flow = F.unfold(8 * flow, kernel_size=3, padding=1).view(batch_size, 2, 9, 1, 1, h, w)
         upsampled_flow = torch.sum(up_mask * upsampled_flow, dim=2)
-        upsampled_flow = upsampled_flow.permute(0, 1, 4, 2, 5, 3).reshape(N, 2, 8 * H, 8 * W)
-        return upsampled_flow
+
+        return upsampled_flow.permute(0, 1, 4, 2, 5, 3).reshape(batch_size, 2, 8 * h, 8 * w)
 
     def forward(self, image1, image2, num_flow_updates=12):
 
