@@ -15,7 +15,8 @@ class ResidualBlock(nn.Module):
         # and frozen after that (see the --freeze-batch-norm param). So for BatchNorm, we still keep the biases
         # in the conv layers. We can safely remove the biases for other norm layers like InstanceNorm, because these
         # are never frozen.
-        bias = norm_layer is nn.BatchNorm2d
+        # bias = norm_layer is nn.BatchNorm2d
+        bias = True
 
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, stride=stride, bias=bias)
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=bias)
@@ -46,7 +47,8 @@ class FeatureEncoder(nn.Module):
     def __init__(self, out_channels, norm_layer=nn.BatchNorm2d):
         super().__init__()
 
-        bias = norm_layer is nn.BatchNorm2d  # see note in ResidualBlock
+        # bias = norm_layer is nn.BatchNorm2d  # see note in ResidualBlock
+        bias = True
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=bias)
         self.norm1 = norm_layer(64)
         self.relu1 = nn.ReLU(inplace=True)
