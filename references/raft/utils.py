@@ -293,6 +293,7 @@ def reduce_across_processes(val):
     dist.all_reduce(t)
     return t
 
+
 def freeze_batch_norm(model):
     for m in model.modules():
         if isinstance(m, torch.nn.BatchNorm2d):

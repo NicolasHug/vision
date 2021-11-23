@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .utils import bilinear_sampler, coords_grid, upflow8
+from .utils import grid_sample, make_coords_grid
 
 
 class ResidualBlock(nn.Module):
@@ -214,8 +214,9 @@ class CorrBlock:
         indexed_pyramid = []
         for corr_volume in self.corr_pyramid:
             sampling_coords = centroids_coords + delta  # end shape is (batch_size * h * w, neigh_size, neigh_size, 2)
-            # TODO: Could this be optimized a bit?
-            indexed_corr_volume = bilinear_sampler(corr_volume, sampling_coords).view(batch_size, h, w, -1)
+            indexed_corr_volume = grid_sample(corr_volume, sampling_coords, align_corners=True, mode='bilinear').view(
+                batch_size, h, w, -1
+            )
             indexed_pyramid.append(indexed_corr_volume)
             centroids_coords = centroids_coords / 2
 
@@ -280,7 +281,7 @@ class RAFT(nn.Module):
 
         # TODO Should this be called mask_head?
         # TODO Should it be part of the flow updater?
-        self.mask_predictor = mask_predictor  
+        self.mask_predictor = mask_predictor
 
     def _upsample_flow(self, flow, up_mask):
         """Upsample flow field [H/8, W/8, 2] -> [H, W, 2] using convex combination"""
@@ -312,8 +313,8 @@ class RAFT(nn.Module):
         hidden_state = torch.tanh(hidden_state)
         context = torch.relu(context)
 
-        coords0 = coords_grid(batch_size, h // 8, w // 8).cuda()
-        coords1 = coords_grid(batch_size, h // 8, w // 8).cuda()
+        coords0 = make_coords_grid(batch_size, h // 8, w // 8).cuda()
+        coords1 = make_coords_grid(batch_size, h // 8, w // 8).cuda()
 
         flow_predictions = []
         for _ in range(num_flow_updates):

@@ -342,7 +342,9 @@ def get_args_parser(add_help=True):
     parser.add_argument("--weight-decay", type=float, default=0.00005, help="Weight decay for AdamW optimizer")
     parser.add_argument("--adamw-eps", type=float, default=1e-8, help="eps value for AdamW optimizer")
 
-    parser.add_argument("--freeze-batch-norm", action="store_true", help="Set BatchNorm modules of the model in eval mode.")
+    parser.add_argument(
+        "--freeze-batch-norm", action="store_true", help="Set BatchNorm modules of the model in eval mode."
+    )
 
     parser.add_argument(
         "--num_flow_updates",
