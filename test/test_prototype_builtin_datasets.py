@@ -2,6 +2,7 @@ import io
 
 import builtin_dataset_mocks
 import pytest
+from torch.utils.data.graph import traverse
 from torchdata.datapipes.iter import IterDataPipe
 from torchvision.prototype import datasets, features
 from torchvision.prototype.datasets._api import DEFAULT_DECODER
@@ -9,10 +10,7 @@ from torchvision.prototype.utils._internal import sequence_to_str
 
 
 def to_bytes(file):
-    try:
-        return file.read()
-    finally:
-        file.close()
+    return file.read()
 
 
 def dataset_parametrization(*names, decoder=to_bytes):
@@ -82,6 +80,10 @@ class TestCommon:
         sample = next(iter(dataset))
         if not any(isinstance(value, features.Feature) for value in sample.values()):
             raise AssertionError("The sample contained no feature.")
+
+    @dataset_parametrization()
+    def test_traversable(self, dataset, mock_info):
+        traverse(dataset)
 
 
 class TestQMNIST:
