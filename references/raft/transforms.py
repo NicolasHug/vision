@@ -3,6 +3,9 @@ import torchvision.transforms as T
 import torchvision.transforms.functional as F
 
 
+# TODO: look at segmentation references and use same names
+
+
 class ValidateModelInput(torch.nn.Module):
     # Pass-through transform that checks the shape and dtypes to make sure the model gets what it expects
     def __init__(self):
