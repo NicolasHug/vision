@@ -8,8 +8,9 @@ class OpticalFlowPresetEval(torch.nn.Module):
 
         self.transforms = T.Compose(
             [
-                T.ToTensor(),
-                T.Scale(),
+                T.PILToTensor(),
+                T.ConvertImageDtype(torch.float32),
+                T.Normalize(mean=0.5, std=0.5),  # map [0, 1] into [-1, 1]
                 T.ValidateModelInput(),
             ]
         )
@@ -38,7 +39,7 @@ class OpticalFlowPresetTrain(torch.nn.Module):
         super().__init__()
 
         transforms = [
-            T.ToTensor(),
+            T.PILToTensor(),
             T.AsymmetricColorJitter(
                 brightness=brightness, contrast=contrast, saturation=saturation, hue=hue, p=asymmetric_jitter_prob
             ),
@@ -51,7 +52,12 @@ class OpticalFlowPresetTrain(torch.nn.Module):
         if do_flip:
             transforms += [T.RandomHorizontalFlip(p=0.5), T.RandomVerticalFlip(p=0.1)]
 
-        transforms += [T.Scale(), T.MakeValidFlowMask(), T.ValidateModelInput()]
+        transforms += [
+            T.ConvertImageDtype(torch.float32),
+            T.Normalize(mean=0.5, std=0.5),  # map [0, 1] into [-1, 1]
+            T.MakeValidFlowMask(),
+            T.ValidateModelInput(),
+        ]
         self.transforms = T.Compose(transforms)
 
     def __call__(self, img1, img2, flow, valid):

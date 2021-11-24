@@ -3,9 +3,6 @@ import torchvision.transforms as T
 import torchvision.transforms.functional as F
 
 
-# TODO: look at segmentation references and use same names
-
-
 class ValidateModelInput(torch.nn.Module):
     # Pass-through transform that checks the shape and dtypes to make sure the model gets what it expects
     def __init__(self):
@@ -28,11 +25,12 @@ class ValidateModelInput(torch.nn.Module):
 
 
 class MakeValidFlowMask(torch.nn.Module):
-    # This transform generates a valid_flow_mask if it doesn't exist. This is a
-    # noop for Kitti and HD1K which already come with a built-in flow mask.
-    def __init__(self):
+    # This transform generates a valid_flow_mask if it doesn't exist.
+    # The flow is considered valid if ||flow||_inf < threshold
+    # This is a noop for Kitti and HD1K which already come with a built-in flow mask.
+    def __init__(self, threshold=1000):
         super().__init__()
-        self.threshold = 1000
+        self.threshold = threshold
 
     def forward(self, img1, img2, flow, valid_flow_mask):
         if flow is not None and valid_flow_mask is None:
@@ -40,13 +38,14 @@ class MakeValidFlowMask(torch.nn.Module):
         return img1, img2, flow, valid_flow_mask
 
 
-class Scale(torch.nn.Module):
-    # TODO: split this int oConvertImageDtype and Normalize transforms
-    # ALso: Calling this before converting the images to cuda seems to affect epe quite a bit
+class ConvertImageDtype(torch.nn.Module):
+    def __init__(self, dtype):
+        super().__init__()
+        self.dtype = dtype
 
     def forward(self, img1, img2, flow, valid_flow_mask):
-        img1 = F.convert_image_dtype(img1, dtype=torch.float32) * 2 - 1
-        img2 = F.convert_image_dtype(img2, dtype=torch.float32) * 2 - 1
+        img1 = F.convert_image_dtype(img1, dtype=self.dtype)
+        img2 = F.convert_image_dtype(img2, dtype=self.dtype)
 
         img1 = img1.contiguous()
         img2 = img2.contiguous()
@@ -54,7 +53,23 @@ class Scale(torch.nn.Module):
         return img1, img2, flow, valid_flow_mask
 
 
-class ToTensor(torch.nn.Module):
+class Normalize(torch.nn.Module):
+    def __init__(self, mean, std):
+        super().__init__()
+        self.mean = mean
+        self.std = std
+
+    def forward(self, img1, img2, flow, valid_flow_mask):
+        img1 = F.normalize(img1, mean=self.mean, std=self.std)
+        img2 = F.normalize(img2, mean=self.mean, std=self.std)
+
+        return img1, img2, flow, valid_flow_mask
+
+
+class PILToTensor(torch.nn.Module):
+    # Converts all inputs to tensors
+    # Technically the flow and the valid mask are numpy arrays, not PIL images, but we keep that naming
+    # for consistency with the rest, e.g. the segmentation reference.
     def forward(self, img1, img2, flow, valid_flow_mask):
         img1 = F.pil_to_tensor(img1)
         img2 = F.pil_to_tensor(img2)
@@ -90,7 +105,8 @@ class RandomErase(torch.nn.Module):
     def forward(self, img1, img2, flow, valid_flow_mask):
         bounds = [50, 100]
         ht, wd = img2.shape[:2]
-        # TODO: This probably doesn't work with floats because of round()
+
+        # Warning : This won't work with image values in [0, 1] because of round()
         mean_color = img2.view(3, -1).float().mean(axis=-1).round()
         for _ in range(torch.randint(1, 3, size=(1,)).item()):
             x0 = torch.randint(0, wd, size=(1,)).item()

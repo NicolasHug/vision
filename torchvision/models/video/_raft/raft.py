@@ -228,11 +228,12 @@ class CorrBlock:
 
         return corr_features
 
-#TODO:
+
+# TODO:
 # def raft_big():
 # def raft_small():
 
-#make this a private builder
+# make this a private builder
 def raft():
 
     num_channels_encoder = 256

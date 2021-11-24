@@ -296,7 +296,7 @@ def main(args):
             done = True
 
         if args.rank == 0:
-            #TODO: save checkpoint for submitit and also save the optimzer
+            # TODO: save checkpoint for submitit and also save the optimzer
             torch.save(model.state_dict(), Path(args.output_dir) / f"{args.name}_{current_epoch}.pth")
             torch.save(model.state_dict(), Path(args.output_dir) / f"{args.name}.pth")
 
@@ -335,7 +335,7 @@ def get_args_parser(add_help=True):
     )
     parser.add_argument("--val-dataset", type=str, nargs="+", help="The dataset(s) to use for validation.")
     parser.add_argument("--val-freq", type=int, default=2, help="Validate every X epochs")
-    #TODO: Look at EMA and maybe just keep num-epochs
+    # TODO: Look at EMA and maybe just keep num-epochs
     parser.add_argument("--num-epochs", type=int, default=500, help="The maximum number of epochs")
     parser.add_argument("--num-steps", type=int, default=100000, help="The maximum number of steps")
     parser.add_argument("--batch-size", type=int, default=6)
