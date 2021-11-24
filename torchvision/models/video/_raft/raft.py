@@ -10,16 +10,14 @@ class ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels, norm_layer, stride=1):
         super().__init__()
 
-        # Note: In general we don't need the bias terms in conv layers followed by a norm layer.
+        # Note regarding bias=True:
+        # Usually we can pass bias=False in conv layers followed by a norm layer.
         # But in the RAFT training reference, the BatchNorm2d layers are only activated for the first dataset,
-        # and frozen after that (see the --freeze-batch-norm param). So for BatchNorm, we still keep the biases
-        # in the conv layers. We can safely remove the biases for other norm layers like InstanceNorm, because these
-        # are never frozen.
-        # bias = norm_layer is nn.BatchNorm2d
-        bias = True
-
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, stride=stride, bias=bias)
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=bias)
+        # and frozen for the rest of the training process (i.e. set as eval()). The bias term is thus still useful
+        # for the rest of the datasets. Technically, we could remove the bias for other norm layers like Instance norm
+        # because these aren't frozen, but we don't bother.
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, stride=stride, bias=True)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=True)
         self.relu = nn.ReLU(inplace=True)
 
         self.norm1 = norm_layer(out_channels)
@@ -29,7 +27,7 @@ class ResidualBlock(nn.Module):
             self.downsample = None
         else:
             self.downsample = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=bias), norm_layer(out_channels)
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=True), norm_layer(out_channels)
             )
 
     def forward(self, x):
@@ -47,9 +45,8 @@ class FeatureEncoder(nn.Module):
     def __init__(self, out_channels, norm_layer=nn.BatchNorm2d):
         super().__init__()
 
-        # bias = norm_layer is nn.BatchNorm2d  # see note in ResidualBlock
-        bias = True
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=bias)
+        # see note in ResidualBlock regarding the bias
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=True)
         self.norm1 = norm_layer(64)
         self.relu1 = nn.ReLU(inplace=True)
 
