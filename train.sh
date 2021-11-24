@@ -34,7 +34,7 @@ function unused_port() {
 master_port=$(unused_port)
 
 # FlyingChairs
-batch_size_chairs=2
+batch_size_chairs=1
 lr_chairs=0.0004
 num_steps_chairs=100000
 name_chairs=raft_chairs
@@ -53,7 +53,7 @@ torchrun --nproc_per_node $n_gpus --nnodes $n_nodes --master_port $master_port r
     --output-dir $chairs_dir
 
 # FlyingThings3D
-batch_size_things=2
+batch_size_things=1
 lr_things=0.000125
 num_steps_things=100000
 name_things=raft_things
