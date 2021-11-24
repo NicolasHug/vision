@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --partition=train
-#SBATCH --cpus-per-task=24
-#SBATCH --gpus-per-node=2
+#SBATCH --cpus-per-task=96
+#SBATCH --gpus-per-node=8
 #SBATCH --time=70:00:00
 #SBATCH --nodes=1
 #SBATCH --output=/data/home/nicolashug/cluster/experiments/slurm-%j.out
@@ -9,7 +9,7 @@
 
 
 
-n_gpus=2
+n_gpus=8
 n_nodes=1
 
 output_dir=~/cluster/experiments/id_$SLURM_JOB_ID
@@ -34,7 +34,7 @@ function unused_port() {
 master_port=$(unused_port)
 
 # FlyingChairs
-batch_size_chairs=5
+batch_size_chairs=2
 lr_chairs=0.0004
 num_steps_chairs=100000
 name_chairs=raft_chairs
@@ -53,7 +53,7 @@ torchrun --nproc_per_node $n_gpus --nnodes $n_nodes --master_port $master_port r
     --output-dir $chairs_dir
 
 # FlyingThings3D
-batch_size_things=3
+batch_size_things=2
 lr_things=0.000125
 num_steps_things=100000
 name_things=raft_things
