@@ -5,7 +5,7 @@ from pathlib import Path
 import torch
 from presets import OpticalFlowPresetTrain, OpticalFlowPresetEval
 from torchvision.datasets import KittiFlow, FlyingChairs, FlyingThings3D, Sintel, HD1K
-from torchvision.models.video import raft
+from torchvision.models.video import raft, raft_small
 from utils import MetricLogger, setup_ddp, sequence_loss, InputPadder, reduce_across_processes, freeze_batch_norm
 
 
@@ -192,9 +192,7 @@ def validate(model, args):
 def main(args):
     setup_ddp(args)
 
-    print(args)
-
-    model = raft()
+    model = raft_small() if args.small else raft()
     model = model.to(args.local_rank)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.local_rank])
 
@@ -347,6 +345,8 @@ def get_args_parser(add_help=True):
     parser.add_argument(
         "--freeze-batch-norm", action="store_true", help="Set BatchNorm modules of the model in eval mode."
     )
+
+    parser.add_argument("--small", action="store_true", help="Use the 'small' RAFT architecture.")
 
     parser.add_argument(
         "--num_flow_updates",

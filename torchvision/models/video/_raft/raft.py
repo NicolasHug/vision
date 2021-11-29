@@ -20,15 +20,22 @@ class ResidualBlock(nn.Module):
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=True)
         self.relu = nn.ReLU(inplace=True)
 
-        self.norm1 = norm_layer(out_channels)
-        self.norm2 = norm_layer(out_channels)
+        downsample = stride != 1
 
-        if stride == 1:
-            self.downsample = None
+        if norm_layer is not None:
+            self.norm1 = norm_layer(out_channels)
+            self.norm2 = norm_layer(out_channels)
+            if downsample:
+                self.norm3 = norm_layer(out_channels)
         else:
+            self.norm1 = self.norm2 = self.norm3 = nn.Sequential()  # pass-through
+
+        if downsample:
             self.downsample = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=True), norm_layer(out_channels)
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=True), self.norm3
             )
+        else:
+            self.downsample = None
 
     def forward(self, x):
         y = x
@@ -41,20 +48,61 @@ class ResidualBlock(nn.Module):
         return self.relu(x + y)
 
 
+class BottleneckBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, norm_layer, stride=1):
+        super(BottleneckBlock, self).__init__()
+
+        self.conv1 = nn.Conv2d(in_channels, out_channels // 4, kernel_size=1, padding=0)
+        self.conv2 = nn.Conv2d(out_channels // 4, out_channels // 4, kernel_size=3, padding=1, stride=stride)
+        self.conv3 = nn.Conv2d(out_channels // 4, out_channels, kernel_size=1, padding=0)
+        self.relu = nn.ReLU(inplace=True)
+
+        downsample = stride != 1
+        if norm_layer is not None:
+            self.norm1 = norm_layer(out_channels // 4)
+            self.norm2 = norm_layer(out_channels // 4)
+            self.norm3 = norm_layer(out_channels)
+            if downsample:
+                self.norm4 = norm_layer(out_channels)
+        else:
+            self.norm1 = self.norm2 = self.norm3 = self.norm4 = nn.Sequential()  # pass-through
+
+        if downsample:
+            self.downsample = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride), self.norm4
+            )
+        else:
+            self.downsample = None
+
+    def forward(self, x):
+        y = x
+        y = self.relu(self.norm1(self.conv1(y)))
+        y = self.relu(self.norm2(self.conv2(y)))
+        y = self.relu(self.norm3(self.conv3(y)))
+
+        if self.downsample is not None:
+            x = self.downsample(x)
+
+        return self.relu(x + y)
+
+
 class FeatureEncoder(nn.Module):
-    def __init__(self, out_channels, norm_layer=nn.BatchNorm2d):
+    # TODO: "layers" name is to keep consistent with resnet. Not sure it's the best name
+    def __init__(self, block=ResidualBlock, layers=(64, 64, 96, 128, 256), norm_layer=nn.BatchNorm2d):
         super().__init__()
 
+        assert len(layers) == 5
+
         # see note in ResidualBlock regarding the bias
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=True)
-        self.norm1 = norm_layer(64)
+        self.conv1 = nn.Conv2d(3, layers[0], kernel_size=7, stride=2, padding=3, bias=True)
+        self.norm1 = norm_layer(layers[0]) if norm_layer is not None else nn.Sequential()
         self.relu1 = nn.ReLU(inplace=True)
 
-        self.layer1 = self._make_layer(64, 64, norm_layer=norm_layer, downsample=False)
-        self.layer2 = self._make_layer(64, 96, norm_layer=norm_layer, downsample=True)
-        self.layer3 = self._make_layer(96, 128, norm_layer=norm_layer, downsample=True)
+        self.layer1 = self._make_2_blocks(block, layers[0], layers[1], norm_layer=norm_layer, first_stride=1)
+        self.layer2 = self._make_2_blocks(block, layers[1], layers[2], norm_layer=norm_layer, first_stride=2)
+        self.layer3 = self._make_2_blocks(block, layers[2], layers[3], norm_layer=norm_layer, first_stride=2)
 
-        self.conv2 = nn.Conv2d(128, out_channels, kernel_size=1)
+        self.conv2 = nn.Conv2d(layers[3], layers[4], kernel_size=1)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -65,10 +113,10 @@ class FeatureEncoder(nn.Module):
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
 
-    def _make_layer(self, in_channels, out_channels, norm_layer, downsample):
-        resblock1 = ResidualBlock(in_channels, out_channels, norm_layer=norm_layer, stride=(2 if downsample else 1))
-        resblock2 = ResidualBlock(out_channels, out_channels, norm_layer=norm_layer, stride=1)
-        return nn.Sequential(resblock1, resblock2)
+    def _make_2_blocks(self, block, in_channels, out_channels, norm_layer, first_stride):
+        block1 = block(in_channels, out_channels, norm_layer=norm_layer, stride=first_stride)
+        block2 = block(out_channels, out_channels, norm_layer=norm_layer, stride=1)
+        return nn.Sequential(block1, block2)
 
     def forward(self, x):
         x = self.conv1(x)
@@ -85,54 +133,80 @@ class FeatureEncoder(nn.Module):
 
 
 class MotionEncoder(nn.Module):
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels_corr, corr_layers=(256, 192), flow_layers=(128, 64), out_channels=128):
         super().__init__()
 
-        self.convc1 = nn.Conv2d(in_channels, 256, 1, padding=0)
-        self.convc2 = nn.Conv2d(256, 192, 3, padding=1)
+        assert len(flow_layers) == 2
+        assert len(corr_layers) in (1, 2)
 
-        self.convf1 = nn.Conv2d(2, 128, 7, padding=3)
-        self.convf2 = nn.Conv2d(128, 64, 3, padding=1)
+        self.convc1 = nn.Conv2d(in_channels_corr, corr_layers[0], kernel_size=1, padding=0)
+        if len(corr_layers) == 2:
+            self.convc2 = nn.Conv2d(corr_layers[0], corr_layers[1], kernel_size=3, padding=1)
+        else:
+            self.convc2 = None
 
-        self.conv = nn.Conv2d(64 + 192, out_channels - 2, 3, padding=1)  # -2 because we cat the flow
+        self.convf1 = nn.Conv2d(2, flow_layers[0], kernel_size=7, padding=3)
+        self.convf2 = nn.Conv2d(flow_layers[0], flow_layers[1], kernel_size=3, padding=1)
+
+        self.conv = nn.Conv2d(
+            corr_layers[-1] + flow_layers[-1], out_channels - 2, 3, padding=1
+        )  # -2 because we cat the flow
+
+        self.out_channels = out_channels
 
     def forward(self, flow, corr_features):
-        cor = F.relu(self.convc1(corr_features))
-        cor = F.relu(self.convc2(cor))
-        flo = F.relu(self.convf1(flow))
-        flo = F.relu(self.convf2(flo))
+        corr = F.relu(self.convc1(corr_features))
+        if self.convc2 is not None:
+            corr = F.relu(self.convc2(corr))
 
-        cor_flo = torch.cat([cor, flo], dim=1)
-        out = F.relu(self.conv(cor_flo))
-        return torch.cat([out, flow], dim=1)
+        flow_orig = flow
+        flow = F.relu(self.convf1(flow))
+        flow = F.relu(self.convf2(flow))
+
+        corr_flow = torch.cat([corr, flow], dim=1)
+        corr_flow = F.relu(self.conv(corr_flow))
+        return torch.cat([corr_flow, flow_orig], dim=1)
 
 
-class SepConvGRU(nn.Module):
-    def __init__(self, *, input_size, hidden_size):
+class ConvGRU(nn.Module):
+    def __init__(self, *, input_size, hidden_size, kernel_size, padding):
         super().__init__()
-        self.convz1 = nn.Conv2d(hidden_size + input_size, hidden_size, (1, 5), padding=(0, 2))
-        self.convr1 = nn.Conv2d(hidden_size + input_size, hidden_size, (1, 5), padding=(0, 2))
-        self.convq1 = nn.Conv2d(hidden_size + input_size, hidden_size, (1, 5), padding=(0, 2))
-
-        self.convz2 = nn.Conv2d(hidden_size + input_size, hidden_size, (5, 1), padding=(2, 0))
-        self.convr2 = nn.Conv2d(hidden_size + input_size, hidden_size, (5, 1), padding=(2, 0))
-        self.convq2 = nn.Conv2d(hidden_size + input_size, hidden_size, (5, 1), padding=(2, 0))
+        self.convz = nn.Conv2d(hidden_size + input_size, hidden_size, kernel_size=kernel_size, padding=padding)
+        self.convr = nn.Conv2d(hidden_size + input_size, hidden_size, kernel_size=kernel_size, padding=padding)
+        self.convq = nn.Conv2d(hidden_size + input_size, hidden_size, kernel_size=kernel_size, padding=padding)
 
     def forward(self, h, x):
-        # horizontal
         hx = torch.cat([h, x], dim=1)
-        z = torch.sigmoid(self.convz1(hx))
-        r = torch.sigmoid(self.convr1(hx))
-        q = torch.tanh(self.convq1(torch.cat([r * h, x], dim=1)))
+        z = torch.sigmoid(self.convz(hx))
+        r = torch.sigmoid(self.convr(hx))
+        q = torch.tanh(self.convq(torch.cat([r * h, x], dim=1)))
         h = (1 - z) * h + z * q
+        return h
 
-        # vertical
-        hx = torch.cat([h, x], dim=1)
-        z = torch.sigmoid(self.convz2(hx))
-        r = torch.sigmoid(self.convr2(hx))
-        q = torch.tanh(self.convq2(torch.cat([r * h, x], dim=1)))
-        h = (1 - z) * h + z * q
 
+class ReccurrentBlock(nn.Module):
+    def __init__(self, *, input_size, hidden_size, kernel_size=((1, 5), (5, 1)), padding=((0, 2), (2, 0))):
+        super().__init__()
+
+        assert len(kernel_size) == len(padding)
+        assert len(kernel_size) in (1, 2)
+
+        self.convgru1 = ConvGRU(
+            input_size=input_size, hidden_size=hidden_size, kernel_size=kernel_size[0], padding=padding[0]
+        )
+        if len(kernel_size) == 2:
+            self.convgru2 = ConvGRU(
+                input_size=input_size, hidden_size=hidden_size, kernel_size=kernel_size[1], padding=padding[1]
+            )
+        else:
+            self.convgru2 = None
+
+        self.hidden_size = hidden_size
+
+    def forward(self, h, x):
+        h = self.convgru1(h, x)
+        if self.convgru2 is not None:
+            h = self.convgru2(h, x)
         return h
 
 
@@ -154,6 +228,8 @@ class UpdateBlock(nn.Module):
         self.reccurrent_block = reccurrent_block
         self.flow_head = flow_head
 
+        self.hidden_state_size = reccurrent_block.hidden_size
+
     def forward(self, hidden_state, context, corr_features, flow):
         motion_features = self.motion_encoder(flow, corr_features)
         x = torch.cat([context, motion_features], dim=1)
@@ -163,10 +239,31 @@ class UpdateBlock(nn.Module):
         return hidden_state, delta_flow
 
 
+class MaskPredictor(nn.Module):
+    def __init__(self, *, in_channels, hidden_size):
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_channels, hidden_size, kernel_size=3, padding=1)
+        self.relu = nn.ReLU(inplace=True)
+        # 8 * 8 * 9 because the predicted flow is downsampled by 8, from the downsampling of the initial FeatureEncoder
+        # and we interpolate with all 9 surrounding neighbors. See paper and appendix
+        self.conv2 = nn.Conv2d(hidden_size, 8 * 8 * 9, 1, padding=0)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.relu(x)
+        x = self.conv2(x)
+        return 0.25 * x
+
+
 class CorrBlock:
     def __init__(self, *, num_levels=4, radius=4):
         self.num_levels = num_levels
         self.radius = radius
+
+        # The neighborhood of a centroid pixel x' is {x' + delta, ||delta||_inf <= radius}
+        # so it's a square surrounding x', and its sides have a length of 2 * radius + 1
+        # The paper claims that it's ||.||_1 instead of ||.||_inf but the original code uses infinity-norm.
+        self.out_channels = num_levels * (2 * radius + 1) ** 2
 
     def build_pyramid(self, fmap1, fmap2):
         """Build the correlation pyramid from two feature maps.
@@ -197,15 +294,11 @@ class CorrBlock:
 
     def index_pyramid(self, centroids_coords):
         """Return correlation features by indexing from the pyramid."""
-        # The neighborhood of a centroid pixel x' is {x' + delta, ||delta||_inf <= radius}
-        # so it's a square surrounding x', with size 2 * radius + 1
-        # The paper claims that it's ||.||_1 instead of ||.||_inf but the original code uses infinity-norm.
-        neighborhood_size = 2 * self.radius + 1
-        # TODO: benchmark to figure out whether we should make it cuda from the start
-        di = torch.linspace(-self.radius, self.radius, neighborhood_size)
-        dj = torch.linspace(-self.radius, self.radius, neighborhood_size)
+        neighborhood_side_len = 2 * self.radius + 1  # see note in __init__ about out_channels
+        di = torch.linspace(-self.radius, self.radius, neighborhood_side_len)
+        dj = torch.linspace(-self.radius, self.radius, neighborhood_side_len)
         delta = torch.stack(torch.meshgrid(di, dj, indexing="ij"), axis=-1).to(centroids_coords.device)
-        delta = delta.view(1, neighborhood_size, neighborhood_size, 2)
+        delta = delta.view(1, neighborhood_side_len, neighborhood_side_len, 2)
 
         batch_size, _, h, w = centroids_coords.shape  # _ = 2
         centroids_coords = centroids_coords.permute(0, 2, 3, 1).reshape(batch_size * h * w, 1, 1, 2)
@@ -222,48 +315,79 @@ class CorrBlock:
         corr_features = torch.cat(indexed_pyramid, dim=-1).permute(0, 3, 1, 2).contiguous()
 
         torch._assert(
-            corr_features.shape == (batch_size, self.num_levels * neighborhood_size ** 2, h, w),
+            corr_features.shape == (batch_size, self.out_channels, h, w),
             "Output shape of index pyramid is incorrect",
         )
 
         return corr_features
 
 
-# TODO:
-# def raft_big():
-# def raft_small():
+def raft_small():
+    features_layers = (32, 32, 64, 96, 128)
+    feature_encoder = FeatureEncoder(block=BottleneckBlock, layers=features_layers, norm_layer=nn.InstanceNorm2d)
+    context_layers = (32, 32, 64, 96, 160)
+    context_encoder = FeatureEncoder(block=BottleneckBlock, layers=context_layers, norm_layer=None)
 
-# make this a private builder
+    num_levels = 4
+    radius = 3
+    corr_block = CorrBlock(num_levels=num_levels, radius=radius)
+
+    motion_encoder = MotionEncoder(
+        in_channels_corr=corr_block.out_channels, corr_layers=(96,), flow_layers=(64, 32), out_channels=82
+    )
+
+    hidden_state_size = 96
+    out_channels_context = context_layers[-1] - hidden_state_size  # See comments in forward pas of RAFT class
+    reccurrent_block = ReccurrentBlock(
+        input_size=motion_encoder.out_channels + out_channels_context,
+        hidden_size=hidden_state_size,
+        kernel_size=(3,),
+        padding=(1,),
+    )
+
+    flow_head = FlowHead(in_channels=hidden_state_size, hidden_size=128)
+
+    update_block = UpdateBlock(motion_encoder=motion_encoder, reccurrent_block=reccurrent_block, flow_head=flow_head)
+
+    mask_predictor = None
+
+    return RAFT(
+        feature_encoder=feature_encoder,
+        context_encoder=context_encoder,
+        corr_block=corr_block,
+        update_block=update_block,
+        mask_predictor=mask_predictor,
+    )
+
+
 def raft():
 
-    num_channels_encoder = 256
-    feature_encoder = FeatureEncoder(out_channels=num_channels_encoder, norm_layer=nn.InstanceNorm2d)
-    context_encoder = FeatureEncoder(out_channels=num_channels_encoder, norm_layer=nn.BatchNorm2d)
+    features_layers = context_layers = (64, 64, 96, 128, 256)
+    feature_encoder = FeatureEncoder(block=ResidualBlock, layers=features_layers, norm_layer=nn.InstanceNorm2d)
+    context_encoder = FeatureEncoder(block=ResidualBlock, layers=context_layers, norm_layer=nn.BatchNorm2d)
 
     num_levels = 4
     radius = 4
     corr_block = CorrBlock(num_levels=num_levels, radius=radius)
 
-    # TODO: a bit sad we have to re-compute this
-    # Make this out_channels attribute
-    corr_block_out_channels = num_levels * (2 * radius + 1) ** 2  # see comments in index_pyramid()
-    motion_encoder_out = 128
-    motion_encoder = MotionEncoder(in_channels=corr_block_out_channels, out_channels=motion_encoder_out)
+    motion_encoder = MotionEncoder(
+        in_channels_corr=corr_block.out_channels, corr_layers=(256, 192), flow_layers=(128, 64), out_channels=128
+    )
 
-    hidden_state_size = context_size = num_channels_encoder // 2
-    gru = SepConvGRU(input_size=motion_encoder_out + context_size, hidden_size=hidden_state_size)
+    hidden_state_size = 128
+    out_channels_context = context_layers[-1] - hidden_state_size  # See comments in forward pas of RAFT class
+    reccurrent_block = ReccurrentBlock(
+        input_size=motion_encoder.out_channels + out_channels_context,
+        hidden_size=hidden_state_size,
+        kernel_size=((1, 5), (5, 1)),
+        padding=((0, 2), (2, 0)),
+    )
 
     flow_head = FlowHead(in_channels=hidden_state_size, hidden_size=256)
 
-    update_block = UpdateBlock(motion_encoder=motion_encoder, reccurrent_block=gru, flow_head=flow_head)
+    update_block = UpdateBlock(motion_encoder=motion_encoder, reccurrent_block=reccurrent_block, flow_head=flow_head)
 
-    mask_predictor = nn.Sequential(
-        nn.Conv2d(hidden_state_size, 256, kernel_size=3, padding=1),
-        nn.ReLU(inplace=True),
-        # 8 * 8 * 9 because the predicted flow is downsampled by 8, from the downsampling of the initial FeatureEncoder
-        # and we interpolate with all 9 surrounding neighbors. See paper and appendix
-        nn.Conv2d(256, 8 * 8 * 9, 1, padding=0),
-    )
+    mask_predictor = MaskPredictor(in_channels=hidden_state_size, hidden_size=256)
 
     return RAFT(
         feature_encoder=feature_encoder,
@@ -275,7 +399,7 @@ def raft():
 
 
 class RAFT(nn.Module):
-    def __init__(self, *, feature_encoder, context_encoder, corr_block, update_block, mask_predictor):
+    def __init__(self, *, feature_encoder, context_encoder, corr_block, update_block, mask_predictor=None):
         super().__init__()
 
         self.feature_encoder = feature_encoder
@@ -283,15 +407,24 @@ class RAFT(nn.Module):
         self.corr_block = corr_block
         self.update_block = update_block
 
-        # TODO Should this be called mask_head?
-        # TODO Should it be part of the flow updater?
         self.mask_predictor = mask_predictor
 
-    def _upsample_flow(self, flow, up_mask):
-        """Upsample flow by a factor of 8, using convex combination weights from up_mask"""
+        if not hasattr(self.update_block, "hidden_state_size"):
+            raise ValueError("The update_block parameter should expose a 'hidden_state_size' attribute.")
+
+    def _upsample_flow(self, flow, up_mask=None):
+        """Upsample flow by a factor of 8, using convex combination weights from up_mask.
+
+        If up_mask is None we just interpolate.
+        """
+        batch_size, _, h, w = flow.shape
+        new_h, new_w = h * 8, w * 8
+
+        if up_mask is None:
+            return 8 * F.interpolate(flow, size=(new_h, new_w), mode="bilinear", align_corners=True)
+
         # See paper page 8 and appendix B.
         # In appendix B the picture assumes a downsample factor of 4 instead of 8.
-        batch_size, _, h, w = flow.shape
 
         up_mask = up_mask.view(batch_size, 1, 9, 8, 8, h, w)
         up_mask = torch.softmax(up_mask, dim=2)  # "convex" == weights sum to 1
@@ -299,7 +432,7 @@ class RAFT(nn.Module):
         upsampled_flow = F.unfold(8 * flow, kernel_size=3, padding=1).view(batch_size, 2, 9, 1, 1, h, w)
         upsampled_flow = torch.sum(up_mask * upsampled_flow, dim=2)
 
-        return upsampled_flow.permute(0, 1, 4, 2, 5, 3).reshape(batch_size, 2, 8 * h, 8 * w)
+        return upsampled_flow.permute(0, 1, 4, 2, 5, 3).reshape(batch_size, 2, new_h, new_w)
 
     def forward(self, image1, image2, num_flow_updates=12):
 
@@ -309,12 +442,24 @@ class RAFT(nn.Module):
 
         fmaps = self.feature_encoder(torch.cat([image1, image2], dim=0))
         fmap1, fmap2 = torch.chunk(fmaps, chunks=2, dim=0)
-        torch._assert(fmap1.shape[-2:] == (h / 8, w / 8), "The encoder should downsample H and W by 8")
+        torch._assert(fmap1.shape[-2:] == (h / 8, w / 8), "The feature encoder should downsample H and W by 8")
 
         self.corr_block.build_pyramid(fmap1, fmap2)
 
         context_out = self.context_encoder(image1)
-        hidden_state, context = torch.chunk(context_out, chunks=2, dim=1)
+        torch._assert(context_out.shape[-2:] == (h / 8, w / 8), "The context encoder should downsample H and W by 8")
+
+        # As in the original paper, the actual output of the context encoder is split in 2 parts:
+        # - one part is used to initialize the hidden state of the reccurent units of the update block
+        # - the rest is the "actual" context.
+        hidden_state_size = self.update_block.hidden_state_size
+        out_channels_context = context_out.shape[1] - hidden_state_size
+        torch._assert(
+            out_channels_context > 0,
+            f"The context encoder outputs {context_out.shape[1]} channels, but it should have at least "
+            f"hidden_state={hidden_state_size} channels",
+        )
+        hidden_state, context = torch.split(context_out, [hidden_state_size, out_channels_context], dim=1)
         hidden_state = torch.tanh(hidden_state)
         context = torch.relu(context)
 
@@ -331,7 +476,7 @@ class RAFT(nn.Module):
 
             coords1 = coords1 + delta_flow
 
-            up_mask = 0.25 * self.mask_predictor(hidden_state)
+            up_mask = None if self.mask_predictor is None else self.mask_predictor(hidden_state)
             upsampled_flow = self._upsample_flow(flow=(coords1 - coords0), up_mask=up_mask)
             flow_predictions.append(upsampled_flow)
 

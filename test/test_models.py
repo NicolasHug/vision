@@ -813,18 +813,19 @@ def test_detection_model_trainable_backbone_layers(model_fn, disable_weight_load
     assert n_trainable_params == _model_tests_values[model_name]["n_trn_params_per_layer"]
 
 
-def test_raft_lol():
-    from torchvision.models.video import raft
+from torchvision.models.video import raft, raft_small
+@pytest.mark.parametrize("fn", (raft, raft_small))
+def test_raft_lol(fn):
 
     torch.manual_seed(0)
 
-    model = raft().eval().to("cuda")
+    model = fn().eval().to("cuda")
     bs = 10
     img1 = torch.rand(bs, 3, 368, 496).cuda()
     img2 = torch.rand(bs, 3, 368, 496).cuda()
 
     preds = model(img1, img2)
-    _assert_expected(preds, name="RAFT", prec=1e-6)
+    _assert_expected(preds, name="RAFT" if fn is raft else "RAFT_SMALL", prec=1e-6)
 
 
 if __name__ == "__main__":

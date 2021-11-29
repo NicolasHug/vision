@@ -46,4 +46,5 @@ xcuserdata/
 # Remove all this
 .dumbo.json
 test/expect/ModelTester.test_RAFT_expect.pkl
+test/expect/ModelTester.test_RAFT_SMALL_expect.pkl
 notes
