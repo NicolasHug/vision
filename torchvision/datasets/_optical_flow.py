@@ -66,7 +66,7 @@ class FlowDataset(ABC, VisionDataset):
             img1, img2, flow, valid_flow_mask = self.transforms(img1, img2, flow, valid_flow_mask)
 
         if self._has_builtin_flow_mask or valid_flow_mask is not None:
-            # TODO: Add note in docstrings about the "or valid_flow_mask" part, i.e. it can be generated in the transforms
+            # The `or valid_flow_mask is not None` part is here because the mask can be generated within a transform
             return img1, img2, flow, valid_flow_mask
         else:
             return img1, img2, flow
@@ -147,9 +147,11 @@ class Sintel(FlowDataset):
             index(int): The index of the example to retrieve
 
         Returns:
-            tuple: If ``split="train"`` a 3-tuple with ``(img1, img2, flow)``.
-            The flow is a numpy array of shape (2, H, W) and the images are PIL images. If `split="test"`, a
-            3-tuple with ``(img1, img2, None)`` is returned.
+            tuple: A 3-tuple with ``(img1, img2, flow)``.
+            The flow is a numpy array of shape (2, H, W) and the images are PIL images.
+            ``flow`` is None if ``split="test"``.
+            If a valid flow mask is generated within the ``transforms`` parameter,
+            a 4-tuple with ``(img1, img2, flow, valid_flow_mask)`` is returned.
         """
         return super().__getitem__(index)
 
@@ -206,11 +208,11 @@ class KittiFlow(FlowDataset):
             index(int): The index of the example to retrieve
 
         Returns:
-            tuple: If ``split="train"`` a 4-tuple with ``(img1, img2, flow,
-            valid_flow_mask)`` where ``valid_flow_mask`` is a numpy boolean mask of shape (H, W)
+            tuple: A 4-tuple with ``(img1, img2, flow, valid_flow_mask)``
+            where ``valid_flow_mask`` is a numpy boolean mask of shape (H, W)
             indicating which flow values are valid. The flow is a numpy array of
-            shape (2, H, W) and the images are PIL images. If `split="test"`, a
-            4-tuple with ``(img1, img2, None, None)`` is returned.
+            shape (2, H, W) and the images are PIL images. ``flow`` and ``valid_flow_mask`` are None if
+            ``split="test"``.
         """
         return super().__getitem__(index)
 
@@ -276,6 +278,9 @@ class FlyingChairs(FlowDataset):
         Returns:
             tuple: A 3-tuple with ``(img1, img2, flow)``.
             The flow is a numpy array of shape (2, H, W) and the images are PIL images.
+            ``flow`` is None if ``split="val"``.
+            If a valid flow mask is generated within the ``transforms`` parameter,
+            a 4-tuple with ``(img1, img2, flow, valid_flow_mask)`` is returned.
         """
         return super().__getitem__(index)
 
@@ -364,6 +369,9 @@ class FlyingThings3D(FlowDataset):
         Returns:
             tuple: A 3-tuple with ``(img1, img2, flow)``.
             The flow is a numpy array of shape (2, H, W) and the images are PIL images.
+            ``flow`` is None if ``split="test"``.
+            If a valid flow mask is generated within the ``transforms`` parameter,
+            a 4-tuple with ``(img1, img2, flow, valid_flow_mask)`` is returned.
         """
         return super().__getitem__(index)
 
@@ -429,11 +437,11 @@ class HD1K(FlowDataset):
             index(int): The index of the example to retrieve
 
         Returns:
-            tuple: If ``split="train"`` a 4-tuple with ``(img1, img2, flow,
-            valid_flow_mask)`` where ``valid_flow_mask`` is a numpy boolean mask of shape (H, W)
+            tuple: A 4-tuple with ``(img1, img2, flow, valid_flow_mask)`` where ``valid_flow_mask``
+            is a numpy boolean mask of shape (H, W)
             indicating which flow values are valid. The flow is a numpy array of
-            shape (2, H, W) and the images are PIL images. If `split="test"`, a
-            4-tuple with ``(img1, img2, None, None)`` is returned.
+            shape (2, H, W) and the images are PIL images. ``flow`` and ``valid_flow_mask`` are None if
+            ``split="test"``.
         """
         return super().__getitem__(index)
 
