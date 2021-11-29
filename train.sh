@@ -50,6 +50,7 @@ torchrun --nproc_per_node $n_gpus --nnodes $n_nodes --master_port $master_port r
     --weight-decay $wdecay_chairs \
     --num-steps $num_steps_chairs \
     --num-epochs 100000 \
+    --small \
     --output-dir $chairs_dir
 
 # FlyingThings3D
@@ -70,6 +71,7 @@ torchrun --nproc_per_node $n_gpus --nnodes $n_nodes --master_port $master_port r
     --num-steps $num_steps_things \
     --num-epochs 100000 \
     --freeze-batch-norm \
+    --small \
     --output-dir $things_dir\
     --resume $chairs_dir/$name_chairs.pth
 
