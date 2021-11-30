@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.modules.batchnorm import BatchNorm2d
+from torch.nn.modules.instancenorm import InstanceNorm2d
 
 from .utils import grid_sample, make_coords_grid
 
@@ -184,7 +186,7 @@ class ConvGRU(nn.Module):
         return h
 
 
-class ReccurrentBlock(nn.Module):
+class RecurrentBlock(nn.Module):
     def __init__(self, *, input_size, hidden_size, kernel_size=((1, 5), (5, 1)), padding=((0, 2), (2, 0))):
         super().__init__()
 
@@ -222,25 +224,25 @@ class FlowHead(nn.Module):
 
 
 class UpdateBlock(nn.Module):
-    def __init__(self, *, motion_encoder, reccurrent_block, flow_head):
+    def __init__(self, *, motion_encoder, recurrent_block, flow_head):
         super().__init__()
         self.motion_encoder = motion_encoder
-        self.reccurrent_block = reccurrent_block
+        self.recurrent_block = recurrent_block
         self.flow_head = flow_head
 
-        self.hidden_state_size = reccurrent_block.hidden_size
+        self.hidden_state_size = recurrent_block.hidden_size
 
     def forward(self, hidden_state, context, corr_features, flow):
         motion_features = self.motion_encoder(flow, corr_features)
         x = torch.cat([context, motion_features], dim=1)
 
-        hidden_state = self.reccurrent_block(hidden_state, x)
+        hidden_state = self.recurrent_block(hidden_state, x)
         delta_flow = self.flow_head(hidden_state)
         return hidden_state, delta_flow
 
 
 class MaskPredictor(nn.Module):
-    def __init__(self, *, in_channels, hidden_size):
+    def __init__(self, *, in_channels, hidden_size, multiplier=1):
         super().__init__()
         self.conv1 = nn.Conv2d(in_channels, hidden_size, kernel_size=3, padding=1)
         self.relu = nn.ReLU(inplace=True)
@@ -248,11 +250,18 @@ class MaskPredictor(nn.Module):
         # and we interpolate with all 9 surrounding neighbors. See paper and appendix
         self.conv2 = nn.Conv2d(hidden_size, 8 * 8 * 9, 1, padding=0)
 
+        # In the original code, they use a factor of 0.25 to "downweight the gradients" of that branch.
+        # See e.g. https://github.com/princeton-vl/RAFT/issues/119#issuecomment-953950419
+        # or https://github.com/princeton-vl/RAFT/issues/24.
+        # It doesn't seem to affect epe significantly and can likely be set to 1.
+        # We expose it so that we can still support loading the original paper's weights into our code.
+        self.multiplier = multiplier
+
     def forward(self, x):
         x = self.conv1(x)
         x = self.relu(x)
         x = self.conv2(x)
-        return 0.25 * x
+        return self.multiplier * x
 
 
 class CorrBlock:
@@ -320,82 +329,6 @@ class CorrBlock:
         )
 
         return corr_features
-
-
-def raft_small():
-    features_layers = (32, 32, 64, 96, 128)
-    feature_encoder = FeatureEncoder(block=BottleneckBlock, layers=features_layers, norm_layer=nn.InstanceNorm2d)
-    context_layers = (32, 32, 64, 96, 160)
-    context_encoder = FeatureEncoder(block=BottleneckBlock, layers=context_layers, norm_layer=None)
-
-    num_levels = 4
-    radius = 3
-    corr_block = CorrBlock(num_levels=num_levels, radius=radius)
-
-    motion_encoder = MotionEncoder(
-        in_channels_corr=corr_block.out_channels, corr_layers=(96,), flow_layers=(64, 32), out_channels=82
-    )
-
-    hidden_state_size = 96
-    out_channels_context = context_layers[-1] - hidden_state_size  # See comments in forward pas of RAFT class
-    reccurrent_block = ReccurrentBlock(
-        input_size=motion_encoder.out_channels + out_channels_context,
-        hidden_size=hidden_state_size,
-        kernel_size=(3,),
-        padding=(1,),
-    )
-
-    flow_head = FlowHead(in_channels=hidden_state_size, hidden_size=128)
-
-    update_block = UpdateBlock(motion_encoder=motion_encoder, reccurrent_block=reccurrent_block, flow_head=flow_head)
-
-    mask_predictor = None
-
-    return RAFT(
-        feature_encoder=feature_encoder,
-        context_encoder=context_encoder,
-        corr_block=corr_block,
-        update_block=update_block,
-        mask_predictor=mask_predictor,
-    )
-
-
-def raft():
-
-    features_layers = context_layers = (64, 64, 96, 128, 256)
-    feature_encoder = FeatureEncoder(block=ResidualBlock, layers=features_layers, norm_layer=nn.InstanceNorm2d)
-    context_encoder = FeatureEncoder(block=ResidualBlock, layers=context_layers, norm_layer=nn.BatchNorm2d)
-
-    num_levels = 4
-    radius = 4
-    corr_block = CorrBlock(num_levels=num_levels, radius=radius)
-
-    motion_encoder = MotionEncoder(
-        in_channels_corr=corr_block.out_channels, corr_layers=(256, 192), flow_layers=(128, 64), out_channels=128
-    )
-
-    hidden_state_size = 128
-    out_channels_context = context_layers[-1] - hidden_state_size  # See comments in forward pas of RAFT class
-    reccurrent_block = ReccurrentBlock(
-        input_size=motion_encoder.out_channels + out_channels_context,
-        hidden_size=hidden_state_size,
-        kernel_size=((1, 5), (5, 1)),
-        padding=((0, 2), (2, 0)),
-    )
-
-    flow_head = FlowHead(in_channels=hidden_state_size, hidden_size=256)
-
-    update_block = UpdateBlock(motion_encoder=motion_encoder, reccurrent_block=reccurrent_block, flow_head=flow_head)
-
-    mask_predictor = MaskPredictor(in_channels=hidden_state_size, hidden_size=256)
-
-    return RAFT(
-        feature_encoder=feature_encoder,
-        context_encoder=context_encoder,
-        corr_block=corr_block,
-        update_block=update_block,
-        mask_predictor=mask_predictor,
-    )
 
 
 class RAFT(nn.Module):
@@ -481,3 +414,125 @@ class RAFT(nn.Module):
             flow_predictions.append(upsampled_flow)
 
         return flow_predictions
+
+
+def _raft(
+    *,
+    feature_encoder_layers,
+    feature_encoder_block,
+    feature_encoder_norm_layer,
+    context_encoder_layers,
+    context_encoder_block,
+    context_encoder_norm_layer,
+    corr_block_num_levels,
+    corr_block_radius,
+    motion_encoder_corr_layers,
+    motion_encoder_flow_layers,
+    motion_encoder_out_channels,
+    recurrent_block_hidden_state_size,
+    recurrent_block_kernel_size,
+    recurrent_block_padding,
+    flow_head_hidden_size,
+    mask_predictor_hidden_size,
+):
+    feature_encoder = FeatureEncoder(
+        block=feature_encoder_block, layers=feature_encoder_layers, norm_layer=feature_encoder_norm_layer
+    )
+    context_encoder = FeatureEncoder(
+        block=context_encoder_block, layers=context_encoder_layers, norm_layer=context_encoder_norm_layer
+    )
+
+    corr_block = CorrBlock(num_levels=corr_block_num_levels, radius=corr_block_radius)
+
+    motion_encoder = MotionEncoder(
+        in_channels_corr=corr_block.out_channels,
+        corr_layers=motion_encoder_corr_layers,
+        flow_layers=motion_encoder_flow_layers,
+        out_channels=motion_encoder_out_channels,
+    )
+
+    # See comments in forward pass of RAFT class about why we split the output of the context encoder
+    out_channels_context = context_encoder_layers[-1] - recurrent_block_hidden_state_size
+    recurrent_block = RecurrentBlock(
+        input_size=motion_encoder.out_channels + out_channels_context,
+        hidden_size=recurrent_block_hidden_state_size,
+        kernel_size=recurrent_block_kernel_size,
+        padding=recurrent_block_padding,
+    )
+
+    flow_head = FlowHead(in_channels=recurrent_block_hidden_state_size, hidden_size=flow_head_hidden_size)
+
+    update_block = UpdateBlock(motion_encoder=motion_encoder, recurrent_block=recurrent_block, flow_head=flow_head)
+
+    if mask_predictor_hidden_size is not None:
+        mask_predictor = MaskPredictor(
+            in_channels=recurrent_block_hidden_state_size,
+            hidden_size=mask_predictor_hidden_size,
+            multiplier=0.25,  # See comment in MaskPredictor about this
+        )
+    else:
+        mask_predictor = None
+
+    return RAFT(
+        feature_encoder=feature_encoder,
+        context_encoder=context_encoder,
+        corr_block=corr_block,
+        update_block=update_block,
+        mask_predictor=mask_predictor,
+    )
+
+
+def raft():
+    return _raft(
+        # Feature encoder
+        feature_encoder_layers=(64, 64, 96, 128, 256),
+        feature_encoder_block=ResidualBlock,
+        feature_encoder_norm_layer=InstanceNorm2d,
+        # Context encoder
+        context_encoder_layers=(64, 64, 96, 128, 256),
+        context_encoder_block=ResidualBlock,
+        context_encoder_norm_layer=BatchNorm2d,
+        # Correlation block
+        corr_block_num_levels=4,
+        corr_block_radius=4,
+        # Motion encoder
+        motion_encoder_corr_layers=(256, 192),
+        motion_encoder_flow_layers=(128, 64),
+        motion_encoder_out_channels=128,
+        # Reccurrent block
+        recurrent_block_hidden_state_size=128,
+        recurrent_block_kernel_size=((1, 5), (5, 1)),
+        recurrent_block_padding=((0, 2), (2, 0)),
+        # Flow head
+        flow_head_hidden_size=256,
+        # Mask predictor
+        mask_predictor_hidden_size=256,
+    )
+
+
+def raft_small():
+    return _raft(
+        # Feature encoder
+        feature_encoder_layers=(32, 32, 64, 96, 128),
+        feature_encoder_block=BottleneckBlock,
+        feature_encoder_norm_layer=InstanceNorm2d,
+        # Context encoder
+        context_encoder_layers=(32, 32, 64, 96, 160),
+        context_encoder_block=BottleneckBlock,
+        context_encoder_norm_layer=None,
+        # Correlation block
+        corr_block_num_levels=4,
+        corr_block_radius=3,
+        # Motion encoder
+        motion_encoder_corr_layers=(96,),
+        motion_encoder_flow_layers=(64, 32),
+        motion_encoder_out_channels=82,
+        # Reccurrent block
+        recurrent_block_hidden_state_size=96,
+        recurrent_block_kernel_size=(3,),
+        recurrent_block_padding=(1,),
+        # Flow head
+        flow_head_hidden_size=128,
+        # Mask predictor
+        mask_predictor_hidden_size=None,
+    )

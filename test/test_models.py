@@ -814,6 +814,8 @@ def test_detection_model_trainable_backbone_layers(model_fn, disable_weight_load
 
 
 from torchvision.models.video import raft, raft_small
+
+
 @pytest.mark.parametrize("fn", (raft, raft_small))
 def test_raft_lol(fn):
 
