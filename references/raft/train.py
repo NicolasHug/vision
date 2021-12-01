@@ -6,7 +6,7 @@ import torch
 from presets import OpticalFlowPresetTrain, OpticalFlowPresetEval
 from torchvision.datasets import KittiFlow, FlyingChairs, FlyingThings3D, Sintel, HD1K
 from torchvision.models.video import raft, raft_small
-from utils import MetricLogger, setup_ddp, sequence_loss, InputPadder, reduce_across_processes, freeze_batch_norm
+from utils import MetricLogger, setup_ddp, sequence_loss, InputPadder, reduce_across_processes, freeze_batch_norm, map_orig_to_ours
 
 
 # TODO: remove
@@ -197,7 +197,10 @@ def main(args):
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.local_rank])
 
     if args.resume is not None:
-        model.load_state_dict(torch.load(args.resume, map_location="cpu"), strict=False)
+        d = torch.load(args.resume, map_location="cpu")
+        if args.map_orig_to_ours:
+            d = map_orig_to_ours(d)
+        model.load_state_dict(d, strict=True)
 
     torch.backends.cudnn.benchmark = True
 
@@ -358,6 +361,9 @@ def get_args_parser(add_help=True):
     parser.add_argument("--gamma", type=float, default=0.8, help="exponential weighting for loss. Must be < 1.")
 
     parser.add_argument("--dist-url", default="env://", help="URL used to set up distributed training")
+
+    # TODO: remove
+    parser.add_argument("--map-orig-to-ours", action="store_true")
     return parser
 
 
