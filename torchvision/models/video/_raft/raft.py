@@ -3,8 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.modules.batchnorm import BatchNorm2d
 from torch.nn.modules.instancenorm import InstanceNorm2d
+from torchvision.ops import ConvNormActivation
 
-from .utils import grid_sample, make_coords_grid
+from .utils import grid_sample, make_coords_grid, upsample_flow
 
 
 class ResidualBlock(nn.Module):
@@ -18,31 +19,32 @@ class ResidualBlock(nn.Module):
         # and frozen for the rest of the training process (i.e. set as eval()). The bias term is thus still useful
         # for the rest of the datasets. Technically, we could remove the bias for other norm layers like Instance norm
         # because these aren't frozen, but we don't bother.
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, stride=stride, bias=True)
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=True)
-        self.relu = nn.ReLU(inplace=True)
+        self.convnormrelu1 = ConvNormActivation(
+            in_channels, out_channels, norm_layer=norm_layer, kernel_size=3, stride=stride, bias=True
+        )
+        self.convnormrelu2 = ConvNormActivation(
+            out_channels, out_channels, norm_layer=norm_layer, kernel_size=3, bias=True
+        )
 
-        downsample = stride != 1
-
-        if norm_layer is not None:
-            self.norm1 = norm_layer(out_channels)
-            self.norm2 = norm_layer(out_channels)
-            if downsample:
-                self.norm3 = norm_layer(out_channels)
-        else:
-            self.norm1 = self.norm2 = self.norm3 = nn.Sequential()  # pass-through
-
-        if downsample:
-            self.downsample = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=True), self.norm3
-            )
-        else:
+        if stride == 1:
             self.downsample = None
+        else:
+            self.downsample = ConvNormActivation(
+                in_channels,
+                out_channels,
+                norm_layer=norm_layer,
+                kernel_size=1,
+                stride=stride,
+                bias=True,
+                activation_layer=None,
+            )
+
+        self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x):
         y = x
-        y = self.relu(self.norm1(self.conv1(y)))
-        y = self.relu(self.norm2(self.conv2(y)))
+        y = self.convnormrelu1(y)
+        y = self.convnormrelu2(y)
 
         if self.downsample is not None:
             x = self.downsample(x)
@@ -54,33 +56,36 @@ class BottleneckBlock(nn.Module):
     def __init__(self, in_channels, out_channels, norm_layer, stride=1):
         super(BottleneckBlock, self).__init__()
 
-        self.conv1 = nn.Conv2d(in_channels, out_channels // 4, kernel_size=1, padding=0)
-        self.conv2 = nn.Conv2d(out_channels // 4, out_channels // 4, kernel_size=3, padding=1, stride=stride)
-        self.conv3 = nn.Conv2d(out_channels // 4, out_channels, kernel_size=1, padding=0)
+        # See note in ResidualBlock for the reason behin bias=True
+        self.convnormrelu1 = ConvNormActivation(
+            in_channels, out_channels // 4, norm_layer=norm_layer, kernel_size=1, bias=True
+        )
+        self.convnormrelu2 = ConvNormActivation(
+            out_channels // 4, out_channels // 4, norm_layer=norm_layer, kernel_size=3, stride=stride, bias=True
+        )
+        self.convnormrelu3 = ConvNormActivation(
+            out_channels // 4, out_channels, norm_layer=norm_layer, kernel_size=1, bias=True
+        )
         self.relu = nn.ReLU(inplace=True)
 
-        downsample = stride != 1
-        if norm_layer is not None:
-            self.norm1 = norm_layer(out_channels // 4)
-            self.norm2 = norm_layer(out_channels // 4)
-            self.norm3 = norm_layer(out_channels)
-            if downsample:
-                self.norm4 = norm_layer(out_channels)
-        else:
-            self.norm1 = self.norm2 = self.norm3 = self.norm4 = nn.Sequential()  # pass-through
-
-        if downsample:
-            self.downsample = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride), self.norm4
-            )
-        else:
+        if stride == 1:
             self.downsample = None
+        else:
+            self.downsample = ConvNormActivation(
+                in_channels,
+                out_channels,
+                norm_layer=norm_layer,
+                kernel_size=1,
+                stride=stride,
+                bias=True,
+                activation_layer=None,
+            )
 
     def forward(self, x):
         y = x
-        y = self.relu(self.norm1(self.conv1(y)))
-        y = self.relu(self.norm2(self.conv2(y)))
-        y = self.relu(self.norm3(self.conv3(y)))
+        y = self.convnormrelu1(y)
+        y = self.convnormrelu2(y)
+        y = self.convnormrelu3(y)
 
         if self.downsample is not None:
             x = self.downsample(x)
@@ -95,10 +100,8 @@ class FeatureEncoder(nn.Module):
 
         assert len(layers) == 5
 
-        # see note in ResidualBlock regarding the bias
-        self.conv1 = nn.Conv2d(3, layers[0], kernel_size=7, stride=2, padding=3, bias=True)
-        self.norm1 = norm_layer(layers[0]) if norm_layer is not None else nn.Sequential()
-        self.relu1 = nn.ReLU(inplace=True)
+        # see note in ResidualBlock for the reason behind bias=True
+        self.convnormrelu = ConvNormActivation(3, layers[0], norm_layer=norm_layer, kernel_size=7, stride=2, bias=True)
 
         self.layer1 = self._make_2_blocks(block, layers[0], layers[1], norm_layer=norm_layer, first_stride=1)
         self.layer2 = self._make_2_blocks(block, layers[1], layers[2], norm_layer=norm_layer, first_stride=2)
@@ -121,9 +124,7 @@ class FeatureEncoder(nn.Module):
         return nn.Sequential(block1, block2)
 
     def forward(self, x):
-        x = self.conv1(x)
-        x = self.norm1(x)
-        x = self.relu1(x)
+        x = self.convnormrelu(x)
 
         x = self.layer1(x)
         x = self.layer2(x)
@@ -141,32 +142,33 @@ class MotionEncoder(nn.Module):
         assert len(flow_layers) == 2
         assert len(corr_layers) in (1, 2)
 
-        self.convc1 = nn.Conv2d(in_channels_corr, corr_layers[0], kernel_size=1, padding=0)
+        self.convcorr1 = ConvNormActivation(in_channels_corr, corr_layers[0], norm_layer=None, kernel_size=1)
         if len(corr_layers) == 2:
-            self.convc2 = nn.Conv2d(corr_layers[0], corr_layers[1], kernel_size=3, padding=1)
+            self.convcorr2 = ConvNormActivation(corr_layers[0], corr_layers[1], norm_layer=None, kernel_size=3)
         else:
-            self.convc2 = None
+            self.convcorr2 = None
 
-        self.convf1 = nn.Conv2d(2, flow_layers[0], kernel_size=7, padding=3)
-        self.convf2 = nn.Conv2d(flow_layers[0], flow_layers[1], kernel_size=3, padding=1)
+        self.convflow1 = ConvNormActivation(2, flow_layers[0], norm_layer=None, kernel_size=7)
+        self.convflow2 = ConvNormActivation(flow_layers[0], flow_layers[1], norm_layer=None, kernel_size=3)
 
-        self.conv = nn.Conv2d(
-            corr_layers[-1] + flow_layers[-1], out_channels - 2, 3, padding=1
-        )  # -2 because we cat the flow
+        # out_channels - 2 because we cat the flow (2 channels) at the end
+        self.conv = ConvNormActivation(
+            corr_layers[-1] + flow_layers[-1], out_channels - 2, norm_layer=None, kernel_size=3
+        )
 
         self.out_channels = out_channels
 
     def forward(self, flow, corr_features):
-        corr = F.relu(self.convc1(corr_features))
-        if self.convc2 is not None:
-            corr = F.relu(self.convc2(corr))
+        corr = self.convcorr1(corr_features)
+        if self.convcorr2 is not None:
+            corr = self.convcorr2(corr)
 
         flow_orig = flow
-        flow = F.relu(self.convf1(flow))
-        flow = F.relu(self.convf2(flow))
+        flow = self.convflow1(flow)
+        flow = self.convflow2(flow)
 
         corr_flow = torch.cat([corr, flow], dim=1)
-        corr_flow = F.relu(self.conv(corr_flow))
+        corr_flow = self.conv(corr_flow)
         return torch.cat([corr_flow, flow_orig], dim=1)
 
 
@@ -314,7 +316,7 @@ class CorrBlock:
 
         indexed_pyramid = []
         for corr_volume in self.corr_pyramid:
-            sampling_coords = centroids_coords + delta  # end shape is (batch_size * h * w, neigh_size, neigh_size, 2)
+            sampling_coords = centroids_coords + delta  # end shape is (batch_size * h * w, side_len, side_len, 2)
             indexed_corr_volume = grid_sample(corr_volume, sampling_coords, align_corners=True, mode="bilinear").view(
                 batch_size, h, w, -1
             )
@@ -344,28 +346,6 @@ class RAFT(nn.Module):
 
         if not hasattr(self.update_block, "hidden_state_size"):
             raise ValueError("The update_block parameter should expose a 'hidden_state_size' attribute.")
-
-    def _upsample_flow(self, flow, up_mask=None):
-        """Upsample flow by a factor of 8, using convex combination weights from up_mask.
-
-        If up_mask is None we just interpolate.
-        """
-        batch_size, _, h, w = flow.shape
-        new_h, new_w = h * 8, w * 8
-
-        if up_mask is None:
-            return 8 * F.interpolate(flow, size=(new_h, new_w), mode="bilinear", align_corners=True)
-
-        # See paper page 8 and appendix B.
-        # In appendix B the picture assumes a downsample factor of 4 instead of 8.
-
-        up_mask = up_mask.view(batch_size, 1, 9, 8, 8, h, w)
-        up_mask = torch.softmax(up_mask, dim=2)  # "convex" == weights sum to 1
-
-        upsampled_flow = F.unfold(8 * flow, kernel_size=3, padding=1).view(batch_size, 2, 9, 1, 1, h, w)
-        upsampled_flow = torch.sum(up_mask * upsampled_flow, dim=2)
-
-        return upsampled_flow.permute(0, 1, 4, 2, 5, 3).reshape(batch_size, 2, new_h, new_w)
 
     def forward(self, image1, image2, num_flow_updates=12):
 
@@ -410,7 +390,7 @@ class RAFT(nn.Module):
             coords1 = coords1 + delta_flow
 
             up_mask = None if self.mask_predictor is None else self.mask_predictor(hidden_state)
-            upsampled_flow = self._upsample_flow(flow=(coords1 - coords0), up_mask=up_mask)
+            upsampled_flow = upsample_flow(flow=(coords1 - coords0), up_mask=up_mask)
             flow_predictions.append(upsampled_flow)
 
         return flow_predictions
@@ -418,21 +398,28 @@ class RAFT(nn.Module):
 
 def _raft(
     *,
+    # Feature encoder
     feature_encoder_layers,
     feature_encoder_block,
     feature_encoder_norm_layer,
+    # Context encoder
     context_encoder_layers,
     context_encoder_block,
     context_encoder_norm_layer,
+    # Correlation block
     corr_block_num_levels,
     corr_block_radius,
+    # Motion encoder
     motion_encoder_corr_layers,
     motion_encoder_flow_layers,
     motion_encoder_out_channels,
+    # Recurrent block
     recurrent_block_hidden_state_size,
     recurrent_block_kernel_size,
     recurrent_block_padding,
+    # Flow Head
     flow_head_hidden_size,
+    # Mask predictor
     mask_predictor_hidden_size,
 ):
     feature_encoder = FeatureEncoder(
@@ -534,5 +521,5 @@ def raft_small():
         # Flow head
         flow_head_hidden_size=128,
         # Mask predictor
-        mask_predictor_hidden_size=None,
+        mask_predictor_hidden_size=None,  # No upsample mask, we just interpolate the flow to upsample
     )
