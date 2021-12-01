@@ -420,45 +420,47 @@ def _raft(
     # Flow Head
     flow_head_hidden_size,
     # Mask predictor
-    mask_predictor_hidden_size,
+    use_mask_predictor,
+    **kwargs,
 ):
-    feature_encoder = FeatureEncoder(
+    feature_encoder = kwargs.pop("feature_encoder", None) or FeatureEncoder(
         block=feature_encoder_block, layers=feature_encoder_layers, norm_layer=feature_encoder_norm_layer
     )
-    context_encoder = FeatureEncoder(
+    context_encoder = kwargs.pop("context_encoder", None) or FeatureEncoder(
         block=context_encoder_block, layers=context_encoder_layers, norm_layer=context_encoder_norm_layer
     )
 
-    corr_block = CorrBlock(num_levels=corr_block_num_levels, radius=corr_block_radius)
+    corr_block = kwargs.pop("corr_block", None) or CorrBlock(num_levels=corr_block_num_levels, radius=corr_block_radius)
 
-    motion_encoder = MotionEncoder(
-        in_channels_corr=corr_block.out_channels,
-        corr_layers=motion_encoder_corr_layers,
-        flow_layers=motion_encoder_flow_layers,
-        out_channels=motion_encoder_out_channels,
-    )
+    update_block = kwargs.pop("update_block", None)
+    if update_block is None:
+        motion_encoder = MotionEncoder(
+            in_channels_corr=corr_block.out_channels,
+            corr_layers=motion_encoder_corr_layers,
+            flow_layers=motion_encoder_flow_layers,
+            out_channels=motion_encoder_out_channels,
+        )
 
-    # See comments in forward pass of RAFT class about why we split the output of the context encoder
-    out_channels_context = context_encoder_layers[-1] - recurrent_block_hidden_state_size
-    recurrent_block = RecurrentBlock(
-        input_size=motion_encoder.out_channels + out_channels_context,
-        hidden_size=recurrent_block_hidden_state_size,
-        kernel_size=recurrent_block_kernel_size,
-        padding=recurrent_block_padding,
-    )
+        # See comments in forward pass of RAFT class about why we split the output of the context encoder
+        out_channels_context = context_encoder_layers[-1] - recurrent_block_hidden_state_size
+        recurrent_block = RecurrentBlock(
+            input_size=motion_encoder.out_channels + out_channels_context,
+            hidden_size=recurrent_block_hidden_state_size,
+            kernel_size=recurrent_block_kernel_size,
+            padding=recurrent_block_padding,
+        )
 
-    flow_head = FlowHead(in_channels=recurrent_block_hidden_state_size, hidden_size=flow_head_hidden_size)
+        flow_head = FlowHead(in_channels=recurrent_block_hidden_state_size, hidden_size=flow_head_hidden_size)
 
-    update_block = UpdateBlock(motion_encoder=motion_encoder, recurrent_block=recurrent_block, flow_head=flow_head)
+        update_block = UpdateBlock(motion_encoder=motion_encoder, recurrent_block=recurrent_block, flow_head=flow_head)
 
-    if mask_predictor_hidden_size is not None:
+    mask_predictor = kwargs.pop("mask_predictor", None)
+    if mask_predictor is None and use_mask_predictor:
         mask_predictor = MaskPredictor(
             in_channels=recurrent_block_hidden_state_size,
-            hidden_size=mask_predictor_hidden_size,
+            hidden_size=256,
             multiplier=0.25,  # See comment in MaskPredictor about this
         )
-    else:
-        mask_predictor = None
 
     return RAFT(
         feature_encoder=feature_encoder,
@@ -466,10 +468,12 @@ def _raft(
         corr_block=corr_block,
         update_block=update_block,
         mask_predictor=mask_predictor,
+        **kwargs,  # not really needed, all params should be consumed by now
     )
 
 
-def raft():
+def raft(*, weights=None, progress=True, **kwargs):
+    # TODO: handle pretrained weights.
     return _raft(
         # Feature encoder
         feature_encoder_layers=(64, 64, 96, 128, 256),
@@ -493,11 +497,13 @@ def raft():
         # Flow head
         flow_head_hidden_size=256,
         # Mask predictor
-        mask_predictor_hidden_size=256,
+        use_mask_predictor=True,
+        **kwargs,
     )
 
 
-def raft_small():
+def raft_small(*, weights=None, progress=True, **kwargs):
+    # TODO: handle pretrained weights.
     return _raft(
         # Feature encoder
         feature_encoder_layers=(32, 32, 64, 96, 128),
@@ -521,5 +527,6 @@ def raft_small():
         # Flow head
         flow_head_hidden_size=128,
         # Mask predictor
-        mask_predictor_hidden_size=None,  # No upsample mask, we just interpolate the flow to upsample
+        use_mask_predictor=False,
+        **kwargs,
     )
