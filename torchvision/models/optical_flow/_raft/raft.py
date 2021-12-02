@@ -10,7 +10,7 @@ from .utils import grid_sample, make_coords_grid, upsample_flow
 
 class ResidualBlock(nn.Module):
     # This is pretty similar to resnet.BasicBlock except for one call to relu, and the bias terms
-    def __init__(self, in_channels, out_channels, *norm_layer, stride=1):
+    def __init__(self, in_channels, out_channels, *, norm_layer, stride=1):
         super().__init__()
 
         # Note regarding bias=True:
@@ -108,6 +108,9 @@ class FeatureEncoder(nn.Module):
 
         self.conv = nn.Conv2d(layers[3], layers[4], kernel_size=1)
 
+        self._init_weights()
+
+    def _init_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
@@ -245,11 +248,10 @@ class UpdateBlock(nn.Module):
 class MaskPredictor(nn.Module):
     def __init__(self, *, in_channels, hidden_size, multiplier=0.25):
         super().__init__()
-        self.conv1 = nn.Conv2d(in_channels, hidden_size, kernel_size=3, padding=1)
-        self.relu = nn.ReLU(inplace=True)
+        self.convrelu = ConvNormActivation(in_channels, hidden_size, norm_layer=None, kernel_size=3)
         # 8 * 8 * 9 because the predicted flow is downsampled by 8, from the downsampling of the initial FeatureEncoder
         # and we interpolate with all 9 surrounding neighbors. See paper and appendix B.
-        self.conv2 = nn.Conv2d(hidden_size, 8 * 8 * 9, 1, padding=0)
+        self.conv = nn.Conv2d(hidden_size, 8 * 8 * 9, 1, padding=0)
 
         # In the original code, they use a factor of 0.25 to "downweight the gradients" of that branch.
         # See e.g. https://github.com/princeton-vl/RAFT/issues/119#issuecomment-953950419
@@ -258,9 +260,8 @@ class MaskPredictor(nn.Module):
         self.multiplier = multiplier
 
     def forward(self, x):
-        x = self.conv1(x)
-        x = self.relu(x)
-        x = self.conv2(x)
+        x = self.convrelu(x)
+        x = self.conv(x)
         return self.multiplier * x
 
 
@@ -472,10 +473,10 @@ def _raft(
     )
 
 
-def raft(*, weights=None, progress=True, **kwargs):
+def raft(*, pretrained=False, progress=True, **kwargs):
 
-    if weights is not None or progress is not None:
-        raise NotImplemented("Pretrained weights aren't available yet")
+    if pretrained:
+        raise NotImplementedError("Pretrained weights aren't available yet")
 
     return _raft(
         # Feature encoder
@@ -505,10 +506,10 @@ def raft(*, weights=None, progress=True, **kwargs):
     )
 
 
-def raft_small(*, weights=None, progress=True, **kwargs):
+def raft_small(*, pretrained=False, progress=True, **kwargs):
 
-    if weights is not None or progress is not None:
-        raise NotImplemented("Pretrained weights aren't available yet")
+    if pretrained:
+        raise NotImplementedError("Pretrained weights aren't available yet")
 
     return _raft(
         # Feature encoder

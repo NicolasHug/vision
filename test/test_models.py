@@ -818,7 +818,7 @@ def test_detection_model_trainable_backbone_layers(model_fn, disable_weight_load
     assert n_trainable_params == _model_tests_values[model_name]["n_trn_params_per_layer"]
 
 
-from torchvision.models.video import raft, raft_small
+from torchvision.models.optical_flow import raft, raft_small
 
 
 @pytest.mark.parametrize("fn", (raft, raft_small))

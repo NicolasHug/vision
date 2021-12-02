@@ -407,10 +407,10 @@ def map_orig_to_ours(orig, mine=None):
             "module.update_block.mask.2.bias",
         ),
         (
-            "mask_predictor.conv1.weight",
-            "mask_predictor.conv1.bias",
-            "mask_predictor.conv2.weight",
-            "mask_predictor.conv2.bias",
+            "mask_predictor.convrelu.0.weight",
+            "mask_predictor.convrelu.0.bias",
+            "mask_predictor.conv.weight",
+            "mask_predictor.conv.bias",
         ),
     ):
         assert_and_add(s_orig, s_mine)
