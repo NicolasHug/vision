@@ -5,7 +5,7 @@ from pathlib import Path
 import torch
 from presets import OpticalFlowPresetTrain, OpticalFlowPresetEval
 from torchvision.datasets import KittiFlow, FlyingChairs, FlyingThings3D, Sintel, HD1K
-from torchvision.models.video import raft, raft_small
+from torchvision.models.optical_flow import raft, raft_small
 from utils import MetricLogger, setup_ddp, sequence_loss, InputPadder, reduce_across_processes, freeze_batch_norm, map_orig_to_ours
 
 

@@ -56,7 +56,7 @@ class BottleneckBlock(nn.Module):
     def __init__(self, in_channels, out_channels, norm_layer, stride=1):
         super(BottleneckBlock, self).__init__()
 
-        # See note in ResidualBlock for the reason behin bias=True
+        # See note in ResidualBlock for the reason behind bias=True
         self.convnormrelu1 = ConvNormActivation(
             in_channels, out_channels // 4, norm_layer=norm_layer, kernel_size=1, bias=True
         )
@@ -100,7 +100,7 @@ class FeatureEncoder(nn.Module):
 
         assert len(layers) == 5
 
-        # see note in ResidualBlock for the reason behind bias=True
+        # See note in ResidualBlock for the reason behind bias=True
         self.convnormrelu = ConvNormActivation(3, layers[0], norm_layer=norm_layer, kernel_size=7, stride=2, bias=True)
 
         self.layer1 = self._make_2_blocks(block, layers[0], layers[1], norm_layer=norm_layer, first_stride=1)

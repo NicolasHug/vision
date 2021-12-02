@@ -15,3 +15,4 @@ from . import feature_extraction
 from . import quantization
 from . import segmentation
 from . import video
+from . import optical_flow
