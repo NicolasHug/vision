@@ -10,7 +10,7 @@ from .utils import grid_sample, make_coords_grid, upsample_flow
 
 class ResidualBlock(nn.Module):
     # This is pretty similar to resnet.BasicBlock except for one call to relu, and the bias terms
-    def __init__(self, in_channels, out_channels, norm_layer, stride=1):
+    def __init__(self, in_channels, out_channels, *norm_layer, stride=1):
         super().__init__()
 
         # Note regarding bias=True:
@@ -18,7 +18,7 @@ class ResidualBlock(nn.Module):
         # But in the RAFT training reference, the BatchNorm2d layers are only activated for the first dataset,
         # and frozen for the rest of the training process (i.e. set as eval()). The bias term is thus still useful
         # for the rest of the datasets. Technically, we could remove the bias for other norm layers like Instance norm
-        # because these aren't frozen, but we don't bother.
+        # because these aren't frozen, but we don't bother (also, we woudn't be able to load the original weights).
         self.convnormrelu1 = ConvNormActivation(
             in_channels, out_channels, norm_layer=norm_layer, kernel_size=3, stride=stride, bias=True
         )
@@ -53,7 +53,7 @@ class ResidualBlock(nn.Module):
 
 
 class BottleneckBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, norm_layer, stride=1):
+    def __init__(self, in_channels, out_channels, *, norm_layer, stride=1):
         super(BottleneckBlock, self).__init__()
 
         # See note in ResidualBlock for the reason behind bias=True
@@ -94,8 +94,7 @@ class BottleneckBlock(nn.Module):
 
 
 class FeatureEncoder(nn.Module):
-    # TODO: "layers" name is to keep consistent with resnet. Not sure it's the best name
-    def __init__(self, block=ResidualBlock, layers=(64, 64, 96, 128, 256), norm_layer=nn.BatchNorm2d):
+    def __init__(self, *, block=ResidualBlock, layers=(64, 64, 96, 128, 256), norm_layer=nn.BatchNorm2d):
         super().__init__()
 
         assert len(layers) == 5
@@ -107,7 +106,7 @@ class FeatureEncoder(nn.Module):
         self.layer2 = self._make_2_blocks(block, layers[1], layers[2], norm_layer=norm_layer, first_stride=2)
         self.layer3 = self._make_2_blocks(block, layers[2], layers[3], norm_layer=norm_layer, first_stride=2)
 
-        self.conv2 = nn.Conv2d(layers[3], layers[4], kernel_size=1)
+        self.conv = nn.Conv2d(layers[3], layers[4], kernel_size=1)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -130,13 +129,13 @@ class FeatureEncoder(nn.Module):
         x = self.layer2(x)
         x = self.layer3(x)
 
-        x = self.conv2(x)
+        x = self.conv(x)
 
         return x
 
 
 class MotionEncoder(nn.Module):
-    def __init__(self, in_channels_corr, corr_layers=(256, 192), flow_layers=(128, 64), out_channels=128):
+    def __init__(self, *, in_channels_corr, corr_layers=(256, 192), flow_layers=(128, 64), out_channels=128):
         super().__init__()
 
         assert len(flow_layers) == 2
@@ -244,19 +243,18 @@ class UpdateBlock(nn.Module):
 
 
 class MaskPredictor(nn.Module):
-    def __init__(self, *, in_channels, hidden_size, multiplier=1):
+    def __init__(self, *, in_channels, hidden_size, multiplier=0.25):
         super().__init__()
         self.conv1 = nn.Conv2d(in_channels, hidden_size, kernel_size=3, padding=1)
         self.relu = nn.ReLU(inplace=True)
         # 8 * 8 * 9 because the predicted flow is downsampled by 8, from the downsampling of the initial FeatureEncoder
-        # and we interpolate with all 9 surrounding neighbors. See paper and appendix
+        # and we interpolate with all 9 surrounding neighbors. See paper and appendix B.
         self.conv2 = nn.Conv2d(hidden_size, 8 * 8 * 9, 1, padding=0)
 
         # In the original code, they use a factor of 0.25 to "downweight the gradients" of that branch.
         # See e.g. https://github.com/princeton-vl/RAFT/issues/119#issuecomment-953950419
         # or https://github.com/princeton-vl/RAFT/issues/24.
         # It doesn't seem to affect epe significantly and can likely be set to 1.
-        # We expose it so that we can still support loading the original paper's weights into our code.
         self.multiplier = multiplier
 
     def forward(self, x):
@@ -273,7 +271,8 @@ class CorrBlock:
 
         # The neighborhood of a centroid pixel x' is {x' + delta, ||delta||_inf <= radius}
         # so it's a square surrounding x', and its sides have a length of 2 * radius + 1
-        # The paper claims that it's ||.||_1 instead of ||.||_inf but the original code uses infinity-norm.
+        # The paper claims that it's ||.||_1 instead of ||.||_inf but it's a typo:
+        # https://github.com/princeton-vl/RAFT/issues/122
         self.out_channels = num_levels * (2 * radius + 1) ** 2
 
     def build_pyramid(self, fmap1, fmap2):
@@ -325,9 +324,10 @@ class CorrBlock:
 
         corr_features = torch.cat(indexed_pyramid, dim=-1).permute(0, 3, 1, 2).contiguous()
 
+        expected_output_shape = (batch_size, self.out_channels, h, w)
         torch._assert(
-            corr_features.shape == (batch_size, self.out_channels, h, w),
-            "Output shape of index pyramid is incorrect",
+            corr_features.shape == expected_output_shape,
+            f"Output shape of index pyramid is incorrect. Should be {expected_output_shape}, got {corr_features.shape}",
         )
 
         return corr_features
@@ -347,7 +347,7 @@ class RAFT(nn.Module):
         if not hasattr(self.update_block, "hidden_state_size"):
             raise ValueError("The update_block parameter should expose a 'hidden_state_size' attribute.")
 
-    def forward(self, image1, image2, num_flow_updates=12):
+    def forward(self, image1, image2, *, num_flow_updates=12):
 
         batch_size, _, h, w = image1.shape
         torch._assert((h, w) == image2.shape[-2:], "input images should have the same shape")
@@ -473,7 +473,10 @@ def _raft(
 
 
 def raft(*, weights=None, progress=True, **kwargs):
-    # TODO: handle pretrained weights.
+
+    if weights is not None or progress is not None:
+        raise NotImplemented("Pretrained weights aren't available yet")
+
     return _raft(
         # Feature encoder
         feature_encoder_layers=(64, 64, 96, 128, 256),
@@ -503,7 +506,10 @@ def raft(*, weights=None, progress=True, **kwargs):
 
 
 def raft_small(*, weights=None, progress=True, **kwargs):
-    # TODO: handle pretrained weights.
+
+    if weights is not None or progress is not None:
+        raise NotImplemented("Pretrained weights aren't available yet")
+
     return _raft(
         # Feature encoder
         feature_encoder_layers=(32, 32, 64, 96, 128),

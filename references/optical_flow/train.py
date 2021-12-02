@@ -6,7 +6,15 @@ import torch
 from presets import OpticalFlowPresetTrain, OpticalFlowPresetEval
 from torchvision.datasets import KittiFlow, FlyingChairs, FlyingThings3D, Sintel, HD1K
 from torchvision.models.optical_flow import raft, raft_small
-from utils import MetricLogger, setup_ddp, sequence_loss, InputPadder, reduce_across_processes, freeze_batch_norm, map_orig_to_ours
+from utils import (
+    MetricLogger,
+    setup_ddp,
+    sequence_loss,
+    InputPadder,
+    reduce_across_processes,
+    freeze_batch_norm,
+    map_orig_to_ours,
+)
 
 
 # TODO: remove

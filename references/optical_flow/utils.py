@@ -332,7 +332,7 @@ def map_orig_to_ours(orig, mine=None):
             assert_and_add(s_orig, s_mine)
 
             s_orig = f"module.{encoder_orig}.conv2.{attr}"
-            s_mine = f"{encoder_mine}.conv2.{attr}"
+            s_mine = f"{encoder_mine}.conv.{attr}"
             assert_and_add(s_orig, s_mine)
 
             for layer in (1, 2, 3):
@@ -361,9 +361,7 @@ def map_orig_to_ours(orig, mine=None):
         for layer in (1, 2, 3):
             for block in (0, 1):
                 for norm in (1, 2):
-                    s_orig = (
-                        f"module.{encoder_orig}.layer{layer}.{block}.norm{norm}.{attr}"
-                    )
+                    s_orig = f"module.{encoder_orig}.layer{layer}.{block}.norm{norm}.{attr}"
                     s_mine = f"{encoder_mine}.layer{layer}.{block}.convnormrelu{norm}.1.{attr}"
                     assert_and_add(s_orig, s_mine)
         for layer in (2, 3):
