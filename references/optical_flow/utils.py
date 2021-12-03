@@ -7,22 +7,18 @@ from collections import deque
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
-from torch.utils.tensorboard import SummaryWriter
 
 
-class SmoothedValue(object):
+class SmoothedValue:
     """Track a series of values and provide access to smoothed values over a
     window or the global series average.
     """
 
-    def __init__(self, window_size=20, fmt=None, tb_val="avg"):
-        if fmt is None:
-            fmt = "{" + tb_val + ":.4f}"
+    def __init__(self, window_size=20, fmt="{median:.4f} ({global_avg:.4f})"):
         self.deque = deque(maxlen=window_size)
         self.total = 0.0
         self.count = 0
         self.fmt = fmt
-        self.tb_val = tb_val
 
     def update(self, value, n=1):
         self.deque.append(value)
@@ -38,88 +34,38 @@ class SmoothedValue(object):
         self.count = int(t[0])
         self.total = t[1]
 
-    def get_tb_val(self):
-        # tells tensorboard what it should register
-        # For some values we want the running avg, for some we just want the last value
-        return getattr(self, self.tb_val)
-
     @property
     def median(self):
-        if self.deque:
-            d = torch.tensor(list(self.deque))
-            return d.median().item()
-        else:
-            return None
+        d = torch.tensor(list(self.deque))
+        return d.median().item()
 
     @property
     def avg(self):
-        if self.deque:
-            d = torch.tensor(list(self.deque), dtype=torch.float32)
-            return d.mean().item()
-        else:
-            return None
+        d = torch.tensor(list(self.deque), dtype=torch.float32)
+        return d.mean().item()
 
     @property
     def global_avg(self):
-        if self.count != 0:
-            return self.total / self.count
-        else:
-            return None
+        return self.total / self.count
 
     @property
     def max(self):
-        if self.deque:
-            return max(self.deque)
-        else:
-            return None
+        return max(self.deque)
 
     @property
     def value(self):
-        if self.deque:
-            return self.deque[-1]
-        else:
-            return None
+        return self.deque[-1]
 
     def __str__(self):
-        if self.deque:
-            return self.fmt.format(
-                median=self.median, avg=self.avg, global_avg=self.global_avg, max=self.max, value=self.value
-            )
-        else:
-            return str(None)
-
-
-class MetricLogger(object):
-    def __init__(self, freq=5, output_dir=None, delimiter="  "):
-        # Note: passing freq in init instead of log() to keep the printing
-        # frequency and the window_size equal. Might revisit.
-        self.meters = defaultdict(lambda: SmoothedValue(window_size=freq))
-        self.freq = freq
-        self.delimiter = delimiter
-        self.tb_writer = SummaryWriter(log_dir=output_dir)
-        self.dont_print = set()
-        self.current_step = 0
-
-    def __getattr__(self, attr):
-        if attr in self.meters:
-            return self.meters[attr]
-        if attr in self.__dict__:
-            return self.__dict__[attr]
-        raise AttributeError("'{}' object has no attribute '{}'".format(type(self).__name__, attr))
-
-    def __str__(self):
-        return self.delimiter.join(
-            ["{}: {}".format(name, str(meter)) for name, meter in self.meters.items() if name not in self.dont_print]
+        return self.fmt.format(
+            median=self.median, avg=self.avg, global_avg=self.global_avg, max=self.max, value=self.value
         )
 
-    def synchronize_between_processes(self):
-        for meter in self.meters.values():
-            meter.synchronize_between_processes()
 
-    def add_meter(self, name, **kwargs):
-        if not kwargs.pop("print", True):
-            self.dont_print.add(name)
-        self.meters[name] = SmoothedValue(window_size=self.freq, **kwargs)
+class MetricLogger:
+    def __init__(self, delimiter="\t"):
+        self.meters = defaultdict(SmoothedValue)
+        self.delimiter = delimiter
 
     def update(self, **kwargs):
         for k, v in kwargs.items():
@@ -128,36 +74,60 @@ class MetricLogger(object):
             assert isinstance(v, (float, int))
             self.meters[k].update(v)
 
-    def log(self, iterable, header="", sync=False, verbose=True):
+    def __getattr__(self, attr):
+        if attr in self.meters:
+            return self.meters[attr]
+        if attr in self.__dict__:
+            return self.__dict__[attr]
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{attr}'")
+
+    def __str__(self):
+        loss_str = []
+        for name, meter in self.meters.items():
+            loss_str.append(f"{name}: {str(meter)}")
+        return self.delimiter.join(loss_str)
+
+    def synchronize_between_processes(self):
+        for meter in self.meters.values():
+            meter.synchronize_between_processes()
+
+    def add_meter(self, name, **kwargs):
+        self.meters[name] = SmoothedValue(**kwargs)
+
+    def log_every(self, iterable, print_freq=5, header=None):
+        i = 0
+        if not header:
+            header = ""
         start_time = time.time()
         end = time.time()
         iter_time = SmoothedValue(fmt="{avg:.4f}")
         data_time = SmoothedValue(fmt="{avg:.4f}")
         space_fmt = ":" + str(len(str(len(iterable)))) + "d"
-        log_msg = self.delimiter.join(
-            [
-                header,
-                "[{0" + space_fmt + "}/{1}]",
-                "eta: {eta}",
-                "{meters}",
-                "time: {time}",
-                "data: {data}",
-                "max mem: {memory:.0f}",
-            ]
-        )
-
+        if torch.cuda.is_available():
+            log_msg = self.delimiter.join(
+                [
+                    header,
+                    "[{0" + space_fmt + "}/{1}]",
+                    "eta: {eta}",
+                    "{meters}",
+                    "time: {time}",
+                    "data: {data}",
+                    "max mem: {memory:.0f}",
+                ]
+            )
+        else:
+            log_msg = self.delimiter.join(
+                [header, "[{0" + space_fmt + "}/{1}]", "eta: {eta}", "{meters}", "time: {time}", "data: {data}"]
+            )
         MB = 1024.0 * 1024.0
-        i = 0
         for obj in iterable:
             data_time.update(time.time() - end)
             yield obj
             iter_time.update(time.time() - end)
-            if i % self.freq == 0:
-                if sync:
-                    self.synchronize_between_processes()
+            if print_freq is not None and i % print_freq == 0:
                 eta_seconds = iter_time.global_avg * (len(iterable) - i)
                 eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
-                if verbose:
+                if torch.cuda.is_available():
                     print(
                         log_msg.format(
                             i,
@@ -169,18 +139,17 @@ class MetricLogger(object):
                             memory=torch.cuda.max_memory_allocated() / MB,
                         )
                     )
-
-                for name, meter in self.meters.items():
-                    self.tb_writer.add_scalar(f"{header} {name}", meter.get_tb_val(), self.current_step)
+                else:
+                    print(
+                        log_msg.format(
+                            i, len(iterable), eta=eta_string, meters=str(self), time=str(iter_time), data=str(data_time)
+                        )
+                    )
             i += 1
-            self.current_step += 1
             end = time.time()
         total_time = time.time() - start_time
         total_time_str = str(datetime.timedelta(seconds=int(total_time)))
-        print("{} Total time: {}".format(header, total_time_str))
-
-    def close(self):
-        self.tb_writer.close()
+        print(f"{header} Total time: {total_time_str}")
 
 
 def sequence_loss(flow_preds, flow_gt, valid_flow_mask, gamma=0.8, max_flow=400):
