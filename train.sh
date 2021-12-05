@@ -33,7 +33,7 @@ function unused_port() {
 master_port=$(unused_port)
 
 # FlyingChairs
-batch_size_chairs=1
+batch_size_chairs=2
 lr_chairs=0.0004
 num_steps_chairs=100000
 name_chairs=raft_chairs
@@ -51,7 +51,7 @@ torchrun --nproc_per_node $n_gpus --nnodes $n_nodes --master_port $master_port r
     --output-dir $chairs_dir
 
 # FlyingThings3D
-batch_size_things=1
+batch_size_things=2
 lr_things=0.000125
 num_steps_things=100000
 name_things=raft_things
@@ -71,7 +71,7 @@ torchrun --nproc_per_node $n_gpus --nnodes $n_nodes --master_port $master_port r
     --resume $chairs_dir/$name_chairs.pth
 
 # Sintel S+K+H
-batch_size_sintel_skh=1
+batch_size_sintel_skh=2
 lr_sintel_skh=0.000125
 num_steps_sintel_skh=100000
 name_sintel_skh=raft_sintel_skh
@@ -93,7 +93,7 @@ torchrun --nproc_per_node $n_gpus --nnodes $n_nodes --master_port $master_port r
     --resume $things_dir/$name_things.pth
 
 # Kitti
-batch_size_kitti=1
+batch_size_kitti=2
 lr_kitti=0.0001
 num_steps_kitti=50000
 name_kitti=raft_kitti
