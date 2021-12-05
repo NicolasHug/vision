@@ -165,6 +165,8 @@ def validate(model, args):
 def main(args):
     utils.setup_ddp(args)
 
+    print(args)
+
     model = raft_small() if args.small else raft_large()
     model = model.to(args.local_rank)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.local_rank])
