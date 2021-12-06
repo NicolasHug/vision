@@ -5,9 +5,6 @@ import torchvision.transforms.functional as F
 
 class ValidateModelInput(torch.nn.Module):
     # Pass-through transform that checks the shape and dtypes to make sure the model gets what it expects
-    def __init__(self):
-        super().__init__()
-
     def forward(self, img1, img2, flow, valid_flow_mask):
 
         assert all(isinstance(arg, torch.Tensor) for arg in (img1, img2, flow, valid_flow_mask) if arg is not None)
@@ -82,6 +79,7 @@ class PILToTensor(torch.nn.Module):
 
 
 class AsymmetricColorJitter(T.ColorJitter):
+    # p determines the proba of doing asymmertric vs symmetric color jittering
     def __init__(self, brightness=0, contrast=0, saturation=0, hue=0, p=0.2):
         super().__init__(brightness=brightness, contrast=contrast, saturation=saturation, hue=hue)
         self.p = p
@@ -101,18 +99,20 @@ class AsymmetricColorJitter(T.ColorJitter):
         return img1, img2, flow, valid_flow_mask
 
 
-class RandomErase(torch.nn.Module):
-    def forward(self, img1, img2, flow, valid_flow_mask):
-        bounds = [50, 100]
-        ht, wd = img2.shape[:2]
+class RandomErasing(T.RandomErasing):
+    # This only erases img2, and with an extra max_erase param
+    def __init__(self, p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0, inplace=False, max_erase=1):
+        super().__init__()
+        self.max_erase = max_erase
+        assert self.max_erase > 0
 
-        # Warning : This won't work with image values in [0, 1] because of round()
-        mean_color = img2.view(3, -1).float().mean(axis=-1).round()
-        for _ in range(torch.randint(1, 3, size=(1,)).item()):
-            x0 = torch.randint(0, wd, size=(1,)).item()
-            y0 = torch.randint(0, ht, size=(1,)).item()
-            dx, dy = torch.randint(bounds[0], bounds[1], size=(2,))
-            img2[:, y0 : y0 + dy, x0 : x0 + dx] = mean_color[:, None, None]
+    def forward(self, img1, img2, flow, valid_flow_mask):
+        if torch.rand(1) > self.p:
+            return img1, img2, flow, valid_flow_mask
+
+        for _ in range(torch.randint(self.max_erase, size=(1,)).item()):
+            x, y, h, w, v = self.get_params(img2, scale=self.scale, ratio=self.ratio, value=[self.value])
+            img2 = F.erase(img2, x, y, h, w, v, self.inplace)
 
         return img1, img2, flow, valid_flow_mask
 
@@ -143,21 +143,18 @@ class RandomVerticalFlip(T.RandomVerticalFlip):
         return img1, img2, flow, valid_flow_mask
 
 
-class MaybeResizeAndCrop(torch.nn.Module):
+class RandomResizeAndCrop(torch.nn.Module):
     # This transform will resize the input with a given proba, and then crop it.
     # These are the reversed operations of the built-in RandomResizedCrop,
-    # although the order of the operations doesn't matter too much.
-    # The reason we don't rely on RandomResizedCrop is because of a significant
-    # difference in the parametrization of both transforms.
+    # although the order of the operations doesn't matter too much: resizing a
+    # crop would give the same result as cropping a resized image, up to
+    # interpolation artifact at the borders of the output.
     #
-    # There *is* a mapping between the inputs of MaybeResizeAndCrop and those of
-    # RandomResizedCrop, but the issue is that the parameters are sampled at
-    # random, with different distributions. Plotting (the equivalent of) `scale`
-    # and `ratio` from MaybeResizeAndCrop shows that the distributions of these
-    # parameters are very different from what can be obtained from the
-    # parametrization of RandomResizedCrop. I tried training RAFT by using
-    # RandomResizedCrop and tweaking the parameters a bit, but couldn't get
-    # an epe as good as with MaybeResizeAndCrop.
+    # The reason we don't rely on RandomResizedCrop is because of a significant
+    # difference in the parametrization of both transforms, in particular,
+    # because of the way the random parameters are sampled in both transforms,
+    # which leads to fairly different resuts (and different epe). For more details see
+    # https://github.com/pytorch/vision/pull/5026/files#r762932579
     def __init__(self, crop_size, min_scale=-0.2, max_scale=0.5, stretch_prob=0.8):
         super().__init__()
         self.crop_size = crop_size
@@ -204,11 +201,11 @@ class MaybeResizeAndCrop(torch.nn.Module):
         y0 = torch.randint(0, img1.shape[1] - self.crop_size[0], size=(1,)).item()
         x0 = torch.randint(0, img1.shape[2] - self.crop_size[1], size=(1,)).item()
 
-        img1 = img1[:, y0 : y0 + self.crop_size[0], x0 : x0 + self.crop_size[1]]
-        img2 = img2[:, y0 : y0 + self.crop_size[0], x0 : x0 + self.crop_size[1]]
-        flow = flow[:, y0 : y0 + self.crop_size[0], x0 : x0 + self.crop_size[1]]
+        img1 = F.crop(img1, y0, x0, self.crop_size[0], self.crop_size[1])
+        img2 = F.crop(img2, y0, x0, self.crop_size[0], self.crop_size[1])
+        flow = F.crop(flow, y0, x0, self.crop_size[0], self.crop_size[1])
         if valid_flow_mask is not None:
-            valid_flow_mask = valid_flow_mask[y0 : y0 + self.crop_size[0], x0 : x0 + self.crop_size[1]]
+            valid_flow_mask = F.crop(valid_flow_mask, y0, x0, self.crop_size[0], self.crop_size[1])
 
         return img1, img2, flow, valid_flow_mask
 
@@ -246,15 +243,6 @@ class MaybeResizeAndCrop(torch.nn.Module):
         valid_new[ii_valid_new, jj_valid_new] = 1
 
         return flow_new, valid_new
-
-
-class RandomApply(T.RandomApply):
-    def forward(self, img1, img2, flow, valid_flow_mask):
-        if self.p < torch.rand(1):
-            return img1, img2, flow, valid_flow_mask
-        for t in self.transforms:
-            img1, img2, flow, valid_flow_mask = t(img1, img2, flow, valid_flow_mask)
-        return img1, img2, flow, valid_flow_mask
 
 
 class Compose:
