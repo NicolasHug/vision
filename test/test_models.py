@@ -93,7 +93,7 @@ def _get_expected_file(name=None):
     return expected_file
 
 
-def _assert_expected(output, name, prec):
+def _assert_expected(output, name, prec=None, atol=None, rtol=None):
     """Test that a python value matches the recorded contents of a file
     based on a "check" name. The value must be
     pickable with `torch.save`. This file
@@ -110,10 +110,11 @@ def _assert_expected(output, name, prec):
         MAX_PICKLE_SIZE = 50 * 1000  # 50 KB
         binary_size = os.path.getsize(expected_file)
         if binary_size > MAX_PICKLE_SIZE:
-            raise RuntimeError(f"The output for {filename}, is larger than 50kb")
+            raise RuntimeError(f"The output for {filename}, is larger than 50kb - got {binary_size}kb")
     else:
         expected = torch.load(expected_file)
-        rtol = atol = prec
+        rtol = rtol or prec  # keeping prec param for legacy reason, but could be removed ideally
+        atol = atol or prec
         torch.testing.assert_close(output, expected, rtol=rtol, atol=atol, check_dtype=False)
 
 
