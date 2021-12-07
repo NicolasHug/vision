@@ -44,7 +44,7 @@ wdecay_chairs=0.0001
 chairs_dir=$output_dir/chairs
 mkdir -p $chairs_dir
 torchrun --nproc_per_node $n_gpus --nnodes $n_nodes --master_port $master_port references/optical_flow/train.py \
-    --dataset-root $dataset_root
+    --dataset-root $dataset_root \
     --name $name_chairs \
     --train-dataset chairs \
     --batch-size $batch_size_chairs \
@@ -63,7 +63,7 @@ wdecay_things=0.0001
 things_dir=$output_dir/things
 mkdir -p $things_dir
 torchrun --nproc_per_node $n_gpus --nnodes $n_nodes --master_port $master_port references/optical_flow/train.py \
-    --dataset-root $dataset_root
+    --dataset-root $dataset_root \
     --name $name_things \
     --train-dataset things \
     --batch-size $batch_size_things \
@@ -85,7 +85,7 @@ gamma_sintel_skh=0.85
 sintel_skh_dir=$output_dir/sintel_skh
 mkdir -p $sintel_skh_dir
 torchrun --nproc_per_node $n_gpus --nnodes $n_nodes --master_port $master_port references/optical_flow/train.py \
-    --dataset-root $dataset_root
+    --dataset-root $dataset_root \
     --name $name_sintel_skh \
     --train-dataset sintel_SKH \
     --batch-size $batch_size_sintel_skh \
@@ -108,7 +108,7 @@ gamma_kitti=0.85
 kitti_dir=$output_dir/kitti
 mkdir -p $kitti_dir
 torchrun --nproc_per_node $n_gpus --nnodes $n_nodes --master_port $master_port references/optical_flow/train.py \
-    --dataset-root $dataset_root
+    --dataset-root $dataset_root \
     --name $name_kitti \
     --train-dataset kitti \
     --batch-size $batch_size_kitti \
