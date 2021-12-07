@@ -193,8 +193,6 @@ def main(args):
 
     if args.resume is not None:
         d = torch.load(args.resume, map_location="cpu")
-        if args.map_orig_to_ours:
-            d = utils.map_orig_to_ours(d)
         model.load_state_dict(d, strict=True)
 
     if args.train_dataset is None:
@@ -321,9 +319,12 @@ def get_args_parser(add_help=True):
 
     parser.add_argument("--dist-url", default="env://", help="URL used to set up distributed training")
 
+<<<<<<< HEAD
     # TODO: remove
     parser.add_argument("--map-orig-to-ours", action="store_true")
 
+=======
+>>>>>>> raft_training_ref
     parser.add_argument(
         "--dataset-root",
         help="Root folder where the datasets are stored. Will be passed as the 'root' parameter of the datasets.",
