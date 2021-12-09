@@ -41,3 +41,6 @@ xcuserdata/
 # direnv
 .direnv
 .envrc
+
+.dumbo.json
+sintel_submission/

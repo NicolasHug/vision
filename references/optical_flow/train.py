@@ -164,6 +164,8 @@ def validate(model, args):
                     padder_mode="sintel",
                     header=f"Sintel val {pass_name}",
                 )
+        elif name == "sintel_test":
+            create_sintel_submission(model, args)
         else:
             warnings.warn(f"Can't validate on {val_dataset}, skipping.")
 
@@ -195,6 +197,58 @@ def train_one_epoch(model, optimizer, scheduler, train_loader, logger, current_s
             return True, current_step
 
     return False, current_step
+
+
+@torch.no_grad()
+def create_sintel_submission(model, args):
+    """Create submission for the Sintel leaderboard"""
+    import numpy as np
+
+    def writeFlow(filename, uv):
+        # Same as raft orig, I'm lazy
+        TAG_CHAR = np.array([202021.25], np.float32)
+        nBands = 2
+
+        assert uv.ndim == 3
+        assert uv.shape[2] == 2
+        u = uv[:, :, 0]
+        v = uv[:, :, 1]
+
+        assert u.shape == v.shape
+        height, width = u.shape
+        f = open(filename, "wb")
+        # write the header
+        f.write(TAG_CHAR)
+        np.array(width).astype(np.int32).tofile(f)
+        np.array(height).astype(np.int32).tofile(f)
+        # arrange into matrix form
+        tmp = np.zeros((height, width * nBands))
+        tmp[:, np.arange(width) * 2] = u
+        tmp[:, np.arange(width) * 2 + 1] = v
+        tmp.astype(np.float32).tofile(f)
+        f.close()
+
+    model.eval()
+
+    print(f"Gonna put Sintel test predictions in {args.output_dir}")
+    for pass_name in ["clean", "final"]:
+        sintel = Sintel(root=args.dataset_root, split="test", pass_name=pass_name, transforms=OpticalFlowPresetEval())
+
+        for test_id in range(len(sintel)):
+            (image1, image2, _), (sequence, frame) = sintel[test_id]
+
+            padder = utils.InputPadder(image1.shape)
+            image1, image2 = padder.pad(image1[None].cuda(), image2[None].cuda())
+
+            flow_preds = model(image1, image2, num_flow_updates=32)
+            flow_pred = flow_preds[-1]
+            flow_pred = padder.unpad(flow_pred[0]).permute(1, 2, 0).cpu().numpy()
+
+            out_dir = Path(args.output_dir) / pass_name / sequence
+            out_dir.mkdir(exist_ok=True, parents=True)
+            output_file = out_dir / f"frame{frame + 1:04d}.flo"
+
+            writeFlow(output_file, flow_pred)
 
 
 def main(args):

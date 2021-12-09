@@ -129,6 +129,8 @@ class Sintel(FlowDataset):
         root = Path(root) / "Sintel"
         flow_root = root / "training" / "flow"
 
+        self._extra = []
+
         for pass_name in passes:
             split_dir = "training" if split == "train" else split
             image_root = root / split_dir / pass_name
@@ -136,6 +138,7 @@ class Sintel(FlowDataset):
                 image_list = sorted(glob(str(image_root / scene / "*.png")))
                 for i in range(len(image_list) - 1):
                     self._image_list += [[image_list[i], image_list[i + 1]]]
+                    self._extra += [(scene, i)]
 
                 if split == "train":
                     self._flow_list += sorted(glob(str(flow_root / scene / "*.flo")))
@@ -153,7 +156,7 @@ class Sintel(FlowDataset):
             If a valid flow mask is generated within the ``transforms`` parameter,
             a 4-tuple with ``(img1, img2, flow, valid_flow_mask)`` is returned.
         """
-        return super().__getitem__(index)
+        return super().__getitem__(index)#, self._extra[index]
 
     def _read_flow(self, file_name):
         return _read_flo(file_name)
