@@ -166,6 +166,8 @@ def validate(model, args):
                 )
         elif name == "sintel_test":
             create_sintel_submission(model, args)
+        elif name == "kitti_test":
+            create_kitti_submission(model, args)
         else:
             warnings.warn(f"Can't validate on {val_dataset}, skipping.")
 
@@ -201,7 +203,9 @@ def train_one_epoch(model, optimizer, scheduler, train_loader, logger, current_s
 
 @torch.no_grad()
 def create_sintel_submission(model, args):
-    """Create submission for the Sintel leaderboard"""
+    """Create submission for the Sintel leaderboard
+    Then use the scripts provided in the dataset folder to generate the submission file (see readmes there)
+    """
     import numpy as np
 
     def writeFlow(filename, uv):
@@ -249,6 +253,36 @@ def create_sintel_submission(model, args):
             output_file = out_dir / f"frame{frame + 1:04d}.flo"
 
             writeFlow(output_file, flow_pred)
+
+
+@torch.no_grad()
+def create_kitti_submission(model, args):
+    """Generate a kitti submssion - put all .pngs in a `flow` folder and zip it.
+    The zip should contain flow/*.png."""
+
+    def writeFlowKITTI(filename, uv):
+        import cv2
+        import numpy as np
+
+        uv = 64.0 * uv + 2 ** 15
+        valid = np.ones([uv.shape[0], uv.shape[1], 1])
+        uv = np.concatenate([uv, valid], axis=-1).astype(np.uint16)
+        cv2.imwrite(filename, uv[..., ::-1])
+
+    model.eval()
+    test_dataset = KittiFlow(root=args.dataset_root, split="test", transforms=OpticalFlowPresetEval())
+
+    for test_id in range(len(test_dataset)):
+        (image1, image2, _, _), frame_id = test_dataset[test_id]
+        padder = utils.InputPadder(image1.shape, mode="kitti")
+        image1, image2 = padder.pad(image1[None].cuda(), image2[None].cuda())
+
+        flow_preds = model(image1, image2, num_flow_updates=24)
+        flow_pred = flow_preds[-1]
+        flow = padder.unpad(flow_pred[0]).permute(1, 2, 0).cpu().numpy()
+
+        output_filename = str(Path(args.output_dir) / str(frame_id))
+        writeFlowKITTI(output_filename, flow)
 
 
 def main(args):

@@ -156,7 +156,7 @@ class Sintel(FlowDataset):
             If a valid flow mask is generated within the ``transforms`` parameter,
             a 4-tuple with ``(img1, img2, flow, valid_flow_mask)`` is returned.
         """
-        return super().__getitem__(index)#, self._extra[index]
+        return super().__getitem__(index)  # , self._extra[index]
 
     def _read_flow(self, file_name):
         return _read_flo(file_name)
@@ -198,8 +198,12 @@ class KittiFlow(FlowDataset):
                 "Could not find the Kitti flow images. Please make sure the directory structure is correct."
             )
 
+        self._extra = []
+
         for img1, img2 in zip(images1, images2):
+            frame_id = img1.split("/")[-1]
             self._image_list += [[img1, img2]]
+            self._extra += [frame_id]
 
         if split == "train":
             self._flow_list = sorted(glob(str(root / "flow_occ" / "*_10.png")))
@@ -217,7 +221,7 @@ class KittiFlow(FlowDataset):
             shape (2, H, W) and the images are PIL images. ``flow`` and ``valid_flow_mask`` are None if
             ``split="test"``.
         """
-        return super().__getitem__(index)
+        return super().__getitem__(index), self._extra[index]
 
     def _read_flow(self, file_name):
         return _read_16bits_png_with_flow_and_valid_mask(file_name)
