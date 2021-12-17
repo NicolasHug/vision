@@ -1391,6 +1391,7 @@ class Flickr30kTestCase(Flickr8kTestCase):
 
 
 class MNISTTestCase(datasets_utils.ImageDatasetTestCase):
+    # some comment
     DATASET_CLASS = datasets.MNIST
 
     ADDITIONAL_CONFIGS = datasets_utils.combinations_grid(train=(True, False))
