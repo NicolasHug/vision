@@ -25,8 +25,14 @@ torch::Tensor decode_jpeg_cuda(
 
 #else
 
-namespace {
-static nvjpegHandle_t nvjpeg_handle = nullptr;
+int dev_malloc(void** p, size_t s) {
+  *p = c10::cuda::CUDACachingAllocator::raw_alloc(s);
+  return 0;
+}
+
+int dev_free(void* p) {
+  c10::cuda::CUDACachingAllocator::raw_delete(p);
+  return 0;
 }
 
 torch::Tensor decode_jpeg_cuda(
@@ -47,26 +53,20 @@ torch::Tensor decode_jpeg_cuda(
 
   TORCH_CHECK(device.is_cuda(), "Expected a cuda device")
 
+  // typedef int (*tDevMalloc)(void**, size_t);
+  // typedef int (*tDevFree)(void*);
+
+  nvjpegDevAllocator_t dev_allocator = {&dev_malloc, &dev_free};
+
   at::cuda::CUDAGuard device_guard(device);
-
-  // Create global nvJPEG handle
-  std::once_flag nvjpeg_handle_creation_flag;
-  std::call_once(nvjpeg_handle_creation_flag, []() {
-    if (nvjpeg_handle == nullptr) {
-      nvjpegStatus_t create_status = nvjpegCreateSimple(&nvjpeg_handle);
-
-      if (create_status != NVJPEG_STATUS_SUCCESS) {
-        // Reset handle so that one can still call the function again in the
-        // same process if there was a failure
-        free(nvjpeg_handle);
-        nvjpeg_handle = nullptr;
-      }
-      TORCH_CHECK(
-          create_status == NVJPEG_STATUS_SUCCESS,
-          "nvjpegCreateSimple failed: ",
-          create_status);
-    }
-  });
+  nvjpegHandle_t nvjpeg_handle; // = nullptr;
+  //   nvjpegStatus_t create_status = nvjpegCreateSimple(&nvjpeg_handle);
+  nvjpegStatus_t status = nvjpegCreateEx(
+      NVJPEG_BACKEND_DEFAULT,
+      &dev_allocator,
+      NULL,
+      NVJPEG_FLAGS_DEFAULT,
+      &nvjpeg_handle);
 
   // Create the jpeg state
   nvjpegJpegState_t jpeg_state;
@@ -162,6 +162,7 @@ torch::Tensor decode_jpeg_cuda(
 
   cudaStream_t stream = at::cuda::getCurrentCUDAStream(device.index());
 
+  //    nvjpegStatus_t decode_status = NVJPEG_STATUS_SUCCESS;
   nvjpegStatus_t decode_status = nvjpegDecode(
       nvjpeg_handle,
       jpeg_state,
@@ -172,6 +173,7 @@ torch::Tensor decode_jpeg_cuda(
       stream);
 
   nvjpegJpegStateDestroy(jpeg_state);
+  nvjpegDestroy(nvjpeg_handle);
 
   TORCH_CHECK(
       decode_status == NVJPEG_STATUS_SUCCESS,
