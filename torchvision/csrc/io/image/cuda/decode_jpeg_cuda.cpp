@@ -172,8 +172,18 @@ torch::Tensor decode_jpeg_cuda(
       &out_image,
       stream);
 
-  nvjpegJpegStateDestroy(jpeg_state);
-  nvjpegDestroy(nvjpeg_handle);
+  nvjpegStatus_t state_destroy_status = nvjpegJpegStateDestroy(jpeg_state);
+  nvjpegStatus_t destroy_status = nvjpegDestroy(nvjpeg_handle);
+
+  TORCH_CHECK(
+      state_destroy_status == NVJPEG_STATUS_SUCCESS,
+      "nvjpegJpegStateDestroy failed: ",
+      state_destroy_status);
+
+  TORCH_CHECK(
+      destroy_status == NVJPEG_STATUS_SUCCESS,
+      "nvjpegDestroy failed: ",
+      destroy_status);
 
   TORCH_CHECK(
       decode_status == NVJPEG_STATUS_SUCCESS,
