@@ -9,14 +9,17 @@ import torch.distributed as dist
 import torchvision
 from PIL import Image
 from torchdata.datapipes.iter import FileLister, IterDataPipe
-from torchvision.prototype.datasets.utils._internal import INFINITE_BUFFER_SIZE
-from torchvision.prototype.features import Label
+
+
+# TODO: maybe infinite buffer can / is already natively supported by torchdata?
+INFINITE_BUFFER_SIZE = 1_000_000_000
 
 IMAGENET_TRAIN_LEN = 1_281_167
 IMAGENET_TEST_LEN = 50_000
 
 
 class _LenSetter(IterDataPipe):
+    # TODO: Ideally, we woudn't need this extra class
     def __init__(self, dp, root):
         self.dp = dp
 
@@ -31,25 +34,17 @@ class _LenSetter(IterDataPipe):
         yield from self.dp
 
     def __len__(self):
-        # The // world_size part shouldn't be needed. See https://github.com/pytorch/data/issues/533
+        # TODO The // world_size part shouldn't be needed. See https://github.com/pytorch/data/issues/533
         return self.size // dist.get_world_size()
 
 
-def _decode(path, root, categories):
+def _decode(path, root, category_to_int):
     category = Path(path).relative_to(root).parts[0]
 
     image = Image.open(path).convert("RGB")
-    label = Label.from_category(category, categories=categories)
+    label = category_to_int(category)
 
     return image, label
-
-
-_RANDOM_IMAGE_TENSORS = [torch.randn(3, 224, 224) for _ in range(300)]
-
-
-def no_transforms(_):
-    # see --no-transforms doc
-    return random.choice(_RANDOM_IMAGE_TENSORS)
 
 
 def _apply_tranforms(img_and_label, transforms):
@@ -61,11 +56,12 @@ def make_dp(root, transforms):
 
     root = Path(root).expanduser().resolve()
     categories = sorted(entry.name for entry in os.scandir(root) if entry.is_dir())
+    category_to_int = {category: i for (i, category) in enumerate(categories)}
+
     dp = FileLister(str(root), recursive=True, masks=["*.JPEG"])
 
     dp = dp.shuffle(buffer_size=INFINITE_BUFFER_SIZE).set_shuffle(False).sharding_filter()
-    dp = dp.map(partial(_decode, root=root, categories=categories))
-
+    dp = dp.map(partial(_decode, root=root, category_to_int=category_to_int))
     dp = dp.map(partial(_apply_tranforms, transforms=transforms))
 
     dp = _LenSetter(dp, root=root)
@@ -145,36 +141,10 @@ class MapStyleToIterable(torch.utils.data.IterableDataset):
         yield from samples
 
 
-class PIMMPreFetcher:
-    def __init__(self, loader):
-        self.loader = loader
+# TODO: maybe only generate these when --no-transforms is passed?
+_RANDOM_IMAGE_TENSORS = [torch.randn(3, 224, 224) for _ in range(300)]
 
-    def __iter__(self):
-        stream = torch.cuda.Stream()
-        first = True
 
-        for next_input, next_target in self.loader:
-            with torch.cuda.stream(stream):
-                next_input = next_input.cuda(non_blocking=True)
-                next_target = next_target.cuda(non_blocking=True)
-            if not first:
-                yield input, target
-            else:
-                first = False
-
-            torch.cuda.current_stream().wait_stream(stream)
-            input = next_input
-            target = next_target
-
-        yield input, target
-
-    def __len__(self):
-        return len(self.loader)
-
-    @property
-    def sampler(self):
-        return self.loader.sampler
-
-    @property
-    def dataset(self):
-        return self.loader.dataset
+def no_transforms(_):
+    # see --no-transforms doc
+    return random.choice(_RANDOM_IMAGE_TENSORS)
