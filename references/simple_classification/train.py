@@ -125,7 +125,7 @@ def create_data_loaders(args):
         num_workers=args.workers,
         pin_memory=not args.no_pin_memory,
     )
-    val_data_loader= torch.utils.data.DataLoader(
+    val_data_loader = torch.utils.data.DataLoader(
         val_dataset,
         batch_size=args.batch_size,
         sampler=val_sampler,
@@ -252,4 +252,3 @@ def get_args_parser(add_help=True):
 if __name__ == "__main__":
     args = get_args_parser().parse_args()
     main(args)
-
