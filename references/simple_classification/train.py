@@ -94,7 +94,7 @@ def create_data_loaders(args):
         dataset_dir = "/ontap_isolated"
     else:
         raise ValueError(f"bad args.fs, got {args.fs}")
-    dataset_dir += "/imagenet_full_size/061417/"
+    dataset_dir += "/tinyimagenet/081318/" if args.tiny else "/imagenet_full_size/061417/"
     train_dir = os.path.join(dataset_dir, "train")
     val_dir = os.path.join(dataset_dir, "val")
 
@@ -133,6 +133,7 @@ def create_data_loaders(args):
     )
 
     num_classes = len(train_dataset.classes)
+    print(f"{num_classes = }")
     return train_data_loader, val_data_loader, train_sampler, num_classes
 
 
@@ -244,6 +245,7 @@ def get_args_parser(add_help=True):
 
     parser.add_argument("--fs", default="fsx", type=str)
     parser.add_argument("--no-pin-memory", action="store_true", help="User pin_memory=False in DataLoader.")
+    parser.add_argument("--tiny", action="store_true", help="Use tiny imagenet")
 
     return parser
 
