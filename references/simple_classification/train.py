@@ -9,7 +9,6 @@ import torch.utils.data
 import torchvision
 import utils
 from torch import nn
-from torchvision.transforms.functional import InterpolationMode
 
 
 def train_one_epoch(model, criterion, optimizer, data_loader, device, epoch, args):
