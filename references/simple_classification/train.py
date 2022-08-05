@@ -9,6 +9,7 @@ import torch.utils.data
 import torchvision
 import utils
 from torch import nn
+from torchvision.transforms.functional import InterpolationMode
 
 
 def train_one_epoch(model, criterion, optimizer, data_loader, device, epoch, args):
@@ -18,14 +19,14 @@ def train_one_epoch(model, criterion, optimizer, data_loader, device, epoch, arg
     metric_logger.add_meter("img/s", utils.SmoothedValue(window_size=10, fmt="{value}"))
 
     header = f"Epoch: [{epoch}]"
-    for i, (image, target) in enumerate(metric_logger.log_every(data_loader, args.print_freq, header)):
+    for image, target in metric_logger.log_every(data_loader, args.print_freq, header):
         start_time = time.time()
         image, target = image.to(device), target.to(device)
-
         output = model(image)
         loss = criterion(output, target)
 
         optimizer.zero_grad()
+
         loss.backward()
         optimizer.step()
 
@@ -47,6 +48,7 @@ def evaluate(model, criterion, data_loader, device, print_freq=100, log_suffix="
         for image, target in metric_logger.log_every(data_loader, print_freq, header):
             image = image.to(device, non_blocking=True)
             target = target.to(device, non_blocking=True)
+
             output = model(image)
             loss = criterion(output, target)
 
@@ -81,7 +83,7 @@ def evaluate(model, criterion, data_loader, device, print_freq=100, log_suffix="
 
 
 def create_data_loaders(args):
-    print("Creating data-loaders")
+    print("Creating data loaders")
 
     if args.fs == "fsx":
         dataset_dir = "/datasets01"
@@ -97,43 +99,42 @@ def create_data_loaders(args):
     train_dir = os.path.join(dataset_dir, "train")
     val_dir = os.path.join(dataset_dir, "val")
 
-    val_resize_size, val_crop_size, train_crop_size = args.val_resize_size, args.val_crop_size, args.train_crop_size
-    preprocessing_train = presets.ClassificationPresetTrain(crop_size=train_crop_size)
-    dataset = torchvision.datasets.ImageFolder(train_dir, transform=preprocessing_train)
+    val_crop_size, train_crop_size = args.val_crop_size, args.train_crop_size
+
+    train_preprocessing = presets.ClassificationPresetTrain(crop_size=train_crop_size)
+    train_dataset = torchvision.datasets.ImageFolder(train_dir, train_preprocessing)
 
     if args.weights and args.test_only:
         weights = torchvision.models.get_weight(args.weights)
-        preprocessing_test = weights.transforms()
+        val_preprocessing = weights.transforms()
     else:
-        preprocessing_test = presets.ClassificationPresetEval(crop_size=val_crop_size, resize_size=val_resize_size)
-    dataset_test = torchvision.datasets.ImageFolder(val_dir, transform=preprocessing_test)
+        val_preprocessing = presets.ClassificationPresetEval(crop_size=val_crop_size)
+    val_dataset = torchvision.datasets.ImageFolder(val_dir, val_preprocessing)
 
     if args.distributed:
-        train_sampler = torch.utils.data.distributed.DistributedSampler(dataset)
-        test_sampler = torch.utils.data.distributed.DistributedSampler(dataset_test, shuffle=False)
+        train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
+        val_sampler = torch.utils.data.distributed.DistributedSampler(val_dataset, shuffle=False)
     else:
-        train_sampler = torch.utils.data.RandomSampler(dataset)
-        test_sampler = torch.utils.data.SequentialSampler(dataset_test)
+        train_sampler = torch.utils.data.RandomSampler(train_dataset)
+        val_sampler = torch.utils.data.SequentialSampler(val_dataset)
 
-    data_loader = torch.utils.data.DataLoader(
-        dataset,
+    train_data_loader = torch.utils.data.DataLoader(
+        train_dataset,
         batch_size=args.batch_size,
         sampler=train_sampler,
         num_workers=args.workers,
         pin_memory=not args.no_pin_memory,
     )
-
-    data_loader_test = torch.utils.data.DataLoader(
-        dataset_test,
+    val_data_loader= torch.utils.data.DataLoader(
+        val_dataset,
         batch_size=args.batch_size,
-        sampler=test_sampler,
+        sampler=val_sampler,
         num_workers=args.workers,
         pin_memory=not args.no_pin_memory,
     )
 
-    num_classes = len(dataset)
-
-    return data_loader, data_loader_test, train_sampler, num_classes
+    num_classes = len(train_dataset.classes)
+    return train_data_loader, val_data_loader, train_sampler, num_classes
 
 
 def main(args):
@@ -151,28 +152,14 @@ def main(args):
     else:
         torch.backends.cudnn.benchmark = True
 
-    data_loader, data_loader_test, train_sampler, num_classes = create_data_loaders(args)
+    train_data_loader, val_data_loader, train_sampler, num_classes = create_data_loaders(args)
 
     print("Creating model")
     model = torchvision.models.__dict__[args.model](weights=args.weights, num_classes=num_classes)
     model.to(device)
 
     criterion = nn.CrossEntropyLoss(label_smoothing=args.label_smoothing)
-
-    custom_keys_weight_decay = []
-    if args.bias_weight_decay is not None:
-        custom_keys_weight_decay.append(("bias", args.bias_weight_decay))
-    if args.transformer_embedding_decay is not None:
-        for key in ["class_token", "position_embedding", "relative_position_bias_table"]:
-            custom_keys_weight_decay.append((key, args.transformer_embedding_decay))
-
-    optimizer = torch.optim.SGD(
-        model.parameters,
-        lr=args.lr,
-        momentum=args.momentum,
-        weight_decay=args.weight_decay,
-    )
-
+    optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_step_size, gamma=args.lr_gamma)
 
     model_without_ddp = model
@@ -184,7 +171,7 @@ def main(args):
         # We disable the cudnn benchmarking because it can noticeably affect the accuracy
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
-        evaluate(model, criterion, data_loader_test, device=device)
+        evaluate(model, criterion, val_data_loader, device=device)
         return
 
     print("Start training")
@@ -192,10 +179,9 @@ def main(args):
     for epoch in range(args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
-
-        train_one_epoch(model, criterion, optimizer, data_loader, device, epoch, args)
+        train_one_epoch(model, criterion, optimizer, train_data_loader, device, epoch, args)
         lr_scheduler.step()
-        evaluate(model, criterion, data_loader_test, device=device)
+        evaluate(model, criterion, val_data_loader, device=device)
 
         if args.output_dir:
             checkpoint = {
@@ -229,7 +215,6 @@ def get_args_parser(add_help=True):
     )
     parser.add_argument("--lr", default=0.1, type=float, help="initial learning rate")
     parser.add_argument("--momentum", default=0.9, type=float, metavar="M", help="momentum")
-
     parser.add_argument(
         "--label-smoothing", default=0.0, type=float, help="label smoothing (default: 0.0)", dest="label_smoothing"
     )
@@ -237,22 +222,18 @@ def get_args_parser(add_help=True):
     parser.add_argument("--lr-gamma", default=0.1, type=float, help="decrease lr by a factor of lr-gamma")
     parser.add_argument("--print-freq", default=10, type=int, help="print frequency")
     parser.add_argument("--output-dir", default=".", type=str, help="path to save outputs")
-
+    parser.add_argument("--resume", default="", type=str, help="path of checkpoint")
     parser.add_argument(
         "--test-only",
         dest="test_only",
         help="Only test the model",
         action="store_true",
     )
-
+    # distributed training parameters
     parser.add_argument("--world-size", default=1, type=int, help="number of distributed processes")
     parser.add_argument("--dist-url", default="env://", type=str, help="url used to set up distributed training")
-
     parser.add_argument(
         "--use-deterministic-algorithms", action="store_true", help="Forces the use of deterministic algorithms only."
-    )
-    parser.add_argument(
-        "--val-resize-size", default=256, type=int, help="the resize size used for validation (default: 256)"
     )
     parser.add_argument(
         "--val-crop-size", default=224, type=int, help="the central crop size used for validation (default: 224)"
@@ -261,8 +242,9 @@ def get_args_parser(add_help=True):
         "--train-crop-size", default=224, type=int, help="the random crop size used for training (default: 224)"
     )
     parser.add_argument("--weights", default=None, type=str, help="the weights enum name to load")
-    parser.add_argument("--no-pin-memory", action="store_true", help="User pin_memory=False in DataLoader.")
+
     parser.add_argument("--fs", default="fsx", type=str)
+    parser.add_argument("--no-pin-memory", action="store_true", help="User pin_memory=False in DataLoader.")
 
     return parser
 
@@ -270,3 +252,4 @@ def get_args_parser(add_help=True):
 if __name__ == "__main__":
     args = get_args_parser().parse_args()
     main(args)
+

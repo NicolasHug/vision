@@ -1,6 +1,5 @@
 import torch
 from torchvision.transforms import transforms
-from torchvision.transforms.functional import InterpolationMode
 
 
 class ClassificationPresetTrain:
@@ -10,10 +9,9 @@ class ClassificationPresetTrain:
         crop_size,
         mean=(0.485, 0.456, 0.406),
         std=(0.229, 0.224, 0.225),
-        interpolation=InterpolationMode.BILINEAR,
         hflip_prob=0.5,
     ):
-        trans = [transforms.RandomResizedCrop(crop_size, interpolation=interpolation)]
+        trans = [transforms.RandomResizedCrop(crop_size)]
         if hflip_prob > 0:
             trans.append(transforms.RandomHorizontalFlip(hflip_prob))
         trans.extend(
@@ -37,12 +35,11 @@ class ClassificationPresetEval:
         resize_size=256,
         mean=(0.485, 0.456, 0.406),
         std=(0.229, 0.224, 0.225),
-        interpolation=InterpolationMode.BILINEAR,
     ):
 
         self.transforms = transforms.Compose(
             [
-                transforms.Resize(resize_size, interpolation=interpolation),
+                transforms.Resize(resize_size),
                 transforms.CenterCrop(crop_size),
                 transforms.PILToTensor(),
                 transforms.ConvertImageDtype(torch.float),
