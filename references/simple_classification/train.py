@@ -18,16 +18,22 @@ def train_one_epoch(model, criterion, optimizer, data_loader, device, epoch, arg
     metric_logger.add_meter("img/s", utils.SmoothedValue(window_size=10, fmt="{value}"))
 
     header = f"Epoch: [{epoch}]"
+    if args.prof: torch.cuda.nvtx.range_push("data-loading")
     for image, target in metric_logger.log_every(data_loader, args.print_freq, header):
+        if args.prof: torch.cuda.nvtx.range_pop()
         start_time = time.time()
+
+        if args.prof: torch.cuda.nvtx.range_push("forward")
         image, target = image.to(device), target.to(device)
         output = model(image)
         loss = criterion(output, target)
+        if args.prof: torch.cuda.nvtx.range_pop()
 
+        if args.prof: torch.cuda.nvtx.range_push("backward")
         optimizer.zero_grad()
-
         loss.backward()
         optimizer.step()
+        if args.prof: torch.cuda.nvtx.range_pop()
 
         acc1, acc5 = utils.accuracy(output, target, topk=(1, 5))
         batch_size = image.shape[0]
@@ -36,6 +42,9 @@ def train_one_epoch(model, criterion, optimizer, data_loader, device, epoch, arg
         metric_logger.meters["acc5"].update(acc5.item(), n=batch_size)
         metric_logger.meters["img/s"].update(batch_size / (time.time() - start_time))
 
+        if args.prof: torch.cuda.nvtx.range_push("data-loading")
+
+    if args.prof: torch.cuda.nvtx.range_pop()
 
 def evaluate(model, criterion, data_loader, device, print_freq=100, log_suffix=""):
     model.eval()
@@ -177,6 +186,8 @@ def main(args):
     print("Start training")
     start_time = time.time()
     for epoch in range(args.epochs):
+        if args.prof and epoch == args.warmup_epoch_prof: torch.cuda.cudart().cudaProfilerStart()
+
         if args.distributed:
             train_sampler.set_epoch(epoch)
         train_one_epoch(model, criterion, optimizer, train_data_loader, device, epoch, args)
@@ -197,6 +208,8 @@ def main(args):
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print(f"Training time {total_time_str}")
+
+    if args.prof: torch.cuda.cudart().cudaProfilerStop()
 
 
 def get_args_parser(add_help=True):
@@ -246,6 +259,9 @@ def get_args_parser(add_help=True):
     parser.add_argument("--fs", default="fsx", type=str)
     parser.add_argument("--no-pin-memory", action="store_true", help="User pin_memory=False in DataLoader.")
     parser.add_argument("--tiny", action="store_true", help="Use tiny imagenet")
+
+    parser.add_argument("--prof", action="store_true", help="Enable Nsight profling")
+    parser.add_argument("--warmup-epoch-prof", default=1, type=int, help="When to start profiling")
 
     return parser
 
