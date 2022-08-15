@@ -112,57 +112,42 @@ class MetricLogger:
             header = ""
         start_time = time.time()
         end = time.time()
-        iter_time = SmoothedValue(fmt="{avg:.4f}")
-        data_time = SmoothedValue(fmt="{avg:.4f}")
-        model_time = SmoothedValue(fmt="{avg:.4f}")
+        iter_time = SmoothedValue(fmt="{avg:.2f}")
+        data_time = SmoothedValue(fmt="{avg:.3f}")
+        model_time = SmoothedValue(fmt="{avg:.2f}")
         space_fmt = ":" + str(len(str(len(iterable)))) + "d"
-        if torch.cuda.is_available():
-            log_msg = self.delimiter.join(
-                [
-                    header,
-                    "[{0" + space_fmt + "}/{1}]",
-                    "eta: {eta}",
-                    "{meters}",
-                    "time: {time}",
-                    "data: {data}",
-                    "model: {model}",
-                    "max mem: {memory:.0f}",
-                ]
-            )
-        else:
-            log_msg = self.delimiter.join(
-                [header, "[{0" + space_fmt + "}/{1}]", "eta: {eta}", "{meters}", "time: {time}", "data: {data}"]
-            )
-        MB = 1024.0 * 1024.0
-        for obj in iterable:
+        log_msg = self.delimiter.join(
+            [
+                header,
+                "[{0" + space_fmt + "}/{1}]",
+                "time: {time}",
+                "data: {data}",
+                "model: {model}",
+                "qs: {qs}",
+            ]
+        )
+        dl_iterator = iter(iterable)
+        q = getattr(dl_iterator, "_data_queue", None)
+        for obj in dl_iterator:
             dtime = time.time() - end
             data_time.update(dtime)
+
             yield obj
+
             ttime = time.time() - end
             iter_time.update(ttime)
             model_time.update(ttime - dtime)
             if i % print_freq == 0:
-                eta_seconds = iter_time.global_avg * (len(iterable) - i)
-                eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
-                if torch.cuda.is_available():
-                    print(
-                        log_msg.format(
-                            i,
-                            len(iterable),
-                            eta=eta_string,
-                            meters=str(self),
-                            time=str(iter_time),
-                            data=str(data_time),
-                            model=str(model_time),
-                            memory=torch.cuda.max_memory_allocated() / MB,
-                        )
+                print(
+                    log_msg.format(
+                        i,
+                        len(iterable),
+                        time=str(iter_time),
+                        data=str(data_time),
+                        model=str(model_time),
+                        qs=(q.qsize() if q else 0),
                     )
-                else:
-                    print(
-                        log_msg.format(
-                            i, len(iterable), eta=eta_string, meters=str(self), time=str(iter_time), data=str(data_time)
-                        )
-                    )
+                )
             i += 1
             end = time.time()
         total_time = time.time() - start_time
