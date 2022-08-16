@@ -11,6 +11,7 @@ import torchvision
 import utils
 from torch import nn
 from torchdata.dataloader2 import adapter, DataLoader2, MultiProcessingReadingService
+import torch.distributed as dist
 
 
 def train_one_epoch(model, criterion, optimizer, data_loader, device, epoch, args):
@@ -73,6 +74,7 @@ def evaluate(model, criterion, data_loader, device, args, print_freq=100, log_su
         and hasattr(data_loader.dataset, "__len__")
         and len(data_loader.dataset) != num_processed_samples
         and torch.distributed.get_rank() == 0
+        and not args.data_loading_only
     ):
         warnings.warn(
             f"It looks like the dataset has {len(data_loader.dataset)} samples, but {num_processed_samples} "
@@ -93,15 +95,22 @@ def create_data_loaders(args):
     if args.fs == "fsx":
         dataset_dir = "/datasets01"
     elif args.fs == "fsx_isolated":
-        dataset_dir = "/fsx_isolated"
+        dataset_dir = "/fsx_isolated/nicolashug"
     elif args.fs == "ontap":
         dataset_dir = "/datasets01_ontap"
     elif args.fs == "ontap_isolated":
-        dataset_dir = "/ontap_isolated"
+        dataset_dir = "/ontap_isolated/nicolashug"
     else:
         raise ValueError(f"bad args.fs, got {args.fs}")
 
-    dataset_dir += "/imagenet_full_size/061417/"
+    if args.tiny:
+        dataset_dir += "/tinyimagenet/081318/"
+    else:
+        dataset_dir += "/imagenet_full_size/061417/"
+    
+    if args.pickle:
+        dataset_dir += "archives/"
+
     train_dir = os.path.join(dataset_dir, "train")
     val_dir = os.path.join(dataset_dir, "val")
 
@@ -115,8 +124,8 @@ def create_data_loaders(args):
 
     if args.ds_type == "dp":
         builder = helpers.make_pre_loaded_dp if args.preload_ds else helpers.make_dp
-        train_dataset = builder(train_dir, transforms=train_preset)
-        val_dataset = builder(val_dir, transforms=val_preset)
+        train_dataset = builder(train_dir, transforms=train_preset, args=args)
+        val_dataset = builder(val_dir, transforms=val_preset, args=args)
 
         train_sampler = val_sampler = None
         train_shuffle = True
@@ -136,8 +145,12 @@ def create_data_loaders(args):
         train_dataset = builder(train_dir, transform=train_preset)
         val_dataset = builder(val_dir, transform=val_preset)
 
-        train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, shuffle=True)
-        val_sampler = torch.utils.data.distributed.DistributedSampler(val_dataset, shuffle=False)
+        if dist.is_initialized():
+            train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, shuffle=True)
+            val_sampler = torch.utils.data.distributed.DistributedSampler(val_dataset, shuffle=False)
+        else:
+            train_sampler = torch.utils.data.RandomSampler(train_dataset)
+            val_sampler = torch.utils.data.SequentialSampler(val_dataset)
         train_shuffle = None  # but actually True
 
     else:
@@ -191,7 +204,7 @@ def main(args):
         utils.mkdir(args.output_dir)
 
     utils.init_distributed_mode(args)
-    print("\n".join(f"{k}: {str(v)}" for k, v in sorted(dict(vars(args)).items())))
+    # print("\n".join(f"{k}: {str(v)}" for k, v in sorted(dict(vars(args)).items())))
 
     device = torch.device(args.device)
 
@@ -231,7 +244,8 @@ def main(args):
         if args.distributed and train_sampler is not None:
             train_sampler.set_epoch(epoch)
         train_one_epoch(model, criterion, optimizer, train_data_loader, device, epoch, args)
-        lr_scheduler.step()
+        if not args.data_loading_only:
+            lr_scheduler.step()
         evaluate(model, criterion, val_data_loader, device=device, args=args)
 
         if args.output_dir:
@@ -337,6 +351,9 @@ def get_args_parser(add_help=True):
         type=str,
         help="'V1' or 'V2'. V2 only works for datapipes",
     )
+
+    parser.add_argument("--tiny", action="store_true")
+    parser.add_argument("--pickle", action="store_true")
 
     return parser
 

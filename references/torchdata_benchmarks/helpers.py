@@ -1,5 +1,7 @@
+import io
 import itertools
 import os
+import pickle
 import random
 from functools import partial
 from pathlib import Path
@@ -20,13 +22,19 @@ IMAGENET_TEST_LEN = 50_000
 
 class _LenSetter(IterDataPipe):
     # TODO: Ideally, we woudn't need this extra class
-    def __init__(self, dp, root):
+    def __init__(self, dp, root, args):
         self.dp = dp
 
         if "train" in str(root):
-            self.size = IMAGENET_TRAIN_LEN
+            if args.tiny:
+                self.size = 100_000
+            else:
+                self.size = IMAGENET_TRAIN_LEN
         elif "val" in str(root):
-            self.size = IMAGENET_TEST_LEN
+            if args.tiny:
+                self.size = 10_000
+            else:
+                self.size = IMAGENET_TEST_LEN
         else:
             raise ValueError("oops?")
 
@@ -35,14 +43,24 @@ class _LenSetter(IterDataPipe):
 
     def __len__(self):
         # TODO The // world_size part shouldn't be needed. See https://github.com/pytorch/data/issues/533
-        return self.size // dist.get_world_size()
+        if dist.is_initialized():
+            return self.size // dist.get_world_size()
+        else:
+            return self.size
 
 
-def _decode(path, root, category_to_int):
-    category = Path(path).relative_to(root).parts[0]
+def _decode(data, root=None, category_to_int=None):
+    if root is not None and category_to_int is not None:
+        path = data
+        category = Path(path).relative_to(root).parts[0]
+        image = Image.open(path).convert("RGB")
+        label = category_to_int[category]
+    else:
+        # This is a (sample, target) tuple from a pickle.
+        # sample is a non-decoded image of type BytesIo
+        image, label = data
+        image = Image.open(image).convert("RGB")
 
-    image = Image.open(path).convert("RGB")
-    label = category_to_int(category)
 
     return image, label
 
@@ -51,9 +69,40 @@ def _apply_tranforms(img_and_label, transforms):
     img, label = img_and_label
     return transforms(img), label
 
+class PickleLoaderDataPipe(IterDataPipe):
+    def __init__(self, source_datapipe):
+        self.source_datapipe = source_datapipe
 
-def make_dp(root, transforms):
+    def __iter__(self):
+        for filename in self.source_datapipe:
+            with open(filename, "rb") as f:
+                yield pickle.load(f)
 
+
+class ConcaterIterable(IterDataPipe):
+    # TODO: This should probably be a built-in: https://github.com/pytorch/data/issues/648
+    def __init__(self, source_datapipe):
+        self.source_datapipe = source_datapipe
+
+    def __iter__(self):
+        for iterable in self.source_datapipe:
+            yield from iterable
+
+
+def make_dp_pickle(root, transforms, args):
+    dp = FileLister(str(root), masks=["*.pkl"])
+    dp = PickleLoaderDataPipe(dp)
+    dp = ConcaterIterable(dp)
+    # TODO: Shuffle smarter https://github.com/pytorch/data/issues/732
+    dp = dp.shuffle(buffer_size=INFINITE_BUFFER_SIZE).set_shuffle(False).sharding_filter()
+    dp = dp.map(_decode)
+    dp = dp.map(partial(_apply_tranforms, transforms=transforms))
+    dp = _LenSetter(dp, root=root, args=args)
+    return dp
+
+def make_dp(root, transforms, args):
+    if args.pickle:
+        return make_dp_pickle(root, transforms, args)
     root = Path(root).expanduser().resolve()
     categories = sorted(entry.name for entry in os.scandir(root) if entry.is_dir())
     category_to_int = {category: i for (i, category) in enumerate(categories)}
@@ -64,7 +113,7 @@ def make_dp(root, transforms):
     dp = dp.map(partial(_decode, root=root, category_to_int=category_to_int))
     dp = dp.map(partial(_apply_tranforms, transforms=transforms))
 
-    dp = _LenSetter(dp, root=root)
+    dp = _LenSetter(dp, root=root, args=args)
     return dp
 
 
@@ -97,10 +146,10 @@ class _PreLoadedDP(IterDataPipe):
             yield self.samples[idx % len(self.samples)]
 
 
-def make_pre_loaded_dp(root, transforms):
+def make_pre_loaded_dp(root, transforms, args):
     dp = _PreLoadedDP(root=root, transforms=transforms)
     dp = dp.shuffle(buffer_size=INFINITE_BUFFER_SIZE).set_shuffle(False).sharding_filter()
-    dp = _LenSetter(dp, root=root)
+    dp = _LenSetter(dp, root=root, args=args)
     return dp
 
 
