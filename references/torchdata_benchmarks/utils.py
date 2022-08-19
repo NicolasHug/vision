@@ -115,7 +115,11 @@ class MetricLogger:
         iter_time = SmoothedValue(fmt="{avg:.2f}")
         data_time = SmoothedValue(fmt="{avg:.3f}")
         model_time = SmoothedValue(fmt="{avg:.2f}")
-        space_fmt = ":" + str(len(str(len(iterable)))) + "d"
+        try:
+            len_iterable = len(iterable)
+        except:
+            len_iterable = "???"
+        space_fmt = ":" + str(len(str(len_iterable))) + "d"
         log_msg = self.delimiter.join(
             [
                 header,
@@ -141,7 +145,7 @@ class MetricLogger:
                 print(
                     log_msg.format(
                         i,
-                        len(iterable),
+                        len_iterable,
                         time=str(iter_time),
                         data=str(data_time),
                         model=str(model_time),

@@ -10,7 +10,7 @@ import torch
 import torch.distributed as dist
 import torchvision
 from PIL import Image
-from torchdata.datapipes.iter import FileLister, IterDataPipe
+from torchdata.datapipes.iter import FileLister, IterDataPipe, FileOpener, TarArchiveLoader
 
 
 # TODO: maybe infinite buffer can / is already natively supported by torchdata?
@@ -48,35 +48,20 @@ class _LenSetter(IterDataPipe):
         else:
             return self.size
 
-
-def _decode(data, root=None, category_to_int=None):
-    if root is not None and category_to_int is not None:
-        path = data
-        category = Path(path).relative_to(root).parts[0]
-        image = Image.open(path).convert("RGB")
-        label = category_to_int[category]
-    else:
-        # This is a (sample, target) tuple from a pickle.
-        # sample is a non-decoded image of type BytesIo
-        image, label = data
-        image = Image.open(image).convert("RGB")
-
-
-    return image, label
-
-
 def _apply_tranforms(img_and_label, transforms):
     img, label = img_and_label
     return transforms(img), label
 
-class PickleLoaderDataPipe(IterDataPipe):
-    def __init__(self, source_datapipe):
+
+class ArchiveLoader(IterDataPipe):
+    def __init__(self, source_datapipe, loader):
+        self.loader = pickle.load if loader == "pickle" else torch.load
         self.source_datapipe = source_datapipe
 
     def __iter__(self):
         for filename in self.source_datapipe:
             with open(filename, "rb") as f:
-                yield pickle.load(f)
+                yield self.loader(f)
 
 
 class ConcaterIterable(IterDataPipe):
@@ -89,20 +74,14 @@ class ConcaterIterable(IterDataPipe):
             yield from iterable
 
 
-def make_dp_pickle(root, transforms, args):
-    dp = FileLister(str(root), masks=["*.pkl"])
-    dp = PickleLoaderDataPipe(dp)
-    dp = ConcaterIterable(dp)
-    # TODO: Shuffle smarter https://github.com/pytorch/data/issues/732
-    dp = dp.shuffle(buffer_size=INFINITE_BUFFER_SIZE).set_shuffle(False).sharding_filter()
-    dp = dp.map(_decode)
-    dp = dp.map(partial(_apply_tranforms, transforms=transforms))
-    dp = _LenSetter(dp, root=root, args=args)
-    return dp
+def _decode_path(data, root, category_to_int):
+    path = data
+    category = Path(path).relative_to(root).parts[0]
+    image = Image.open(path).convert("RGB")
+    label = category_to_int[category]
+    return image, label
 
-def make_dp(root, transforms, args):
-    if args.pickle:
-        return make_dp_pickle(root, transforms, args)
+def _make_dp_from_image_folder(root):
     root = Path(root).expanduser().resolve()
     categories = sorted(entry.name for entry in os.scandir(root) if entry.is_dir())
     category_to_int = {category: i for (i, category) in enumerate(categories)}
@@ -110,9 +89,62 @@ def make_dp(root, transforms, args):
     dp = FileLister(str(root), recursive=True, masks=["*.JPEG"])
 
     dp = dp.shuffle(buffer_size=INFINITE_BUFFER_SIZE).set_shuffle(False).sharding_filter()
-    dp = dp.map(partial(_decode, root=root, category_to_int=category_to_int))
-    dp = dp.map(partial(_apply_tranforms, transforms=transforms))
+    dp = dp.map(partial(_decode_path, root=root, category_to_int=category_to_int))
+    return dp
 
+def _decode_bytesio(data):
+    image, label = data
+    image = Image.open(image).convert("RGB")
+    return image, label
+
+def _decode_tensor(data):
+    image, label = data
+    image = torchvision.io.decode_jpeg(image, mode=torchvision.io.ImageReadMode.RGB)
+    return image, label
+
+def _make_dp_from_archive(root, args):
+    ext = "pt" if args.archive== "torch" else "pkl"
+    dp = FileLister(str(root), masks=[f"archive_{args.archive_size}*{args.archive_content}*.{ext}"])
+    dp = dp.shuffle(buffer_size=INFINITE_BUFFER_SIZE).set_shuffle(False)  # inter-archive shuffling
+    dp = ArchiveLoader(dp, loader=args.archive)
+    dp = ConcaterIterable(dp)
+    dp = dp.shuffle(buffer_size=args.archive_size).set_shuffle(False)  # intra-archive shuffling
+
+    # TODO: we're sharding here but the big BytesIO or Tensors have already been
+    # loaded by all workers, possibly in vain. Hopefully the new experimental MP
+    # reading service will improve this?
+    dp = dp.sharding_filter()
+    decode = {"bytesio": _decode_bytesio, "tensor": _decode_tensor}[args.archive_content]
+    return dp.map(decode)
+
+def _decode_tar_entry(data):
+    # Note on how we retrieve the label: each file name in the archive (the
+    # "arcnames" as from the tarfile docs) looks like "label/some_name.jpg".
+    # It's somewhat hacky and will obviously change, but it's OK for now.
+    filename, io_stream = data
+    label = int(Path(filename).parent.name)
+    image = Image.open(io_stream).convert("RGB")
+    return image, label
+
+def _make_dp_from_tars(root, args):
+
+    dp = FileLister(str(root), masks=[f"archive_{args.archive_size}*.tar"])
+    dp = dp.shuffle(buffer_size=INFINITE_BUFFER_SIZE).set_shuffle(False)  # inter-archive shuffling
+    dp = FileOpener(dp, mode="b")
+    dp = TarArchiveLoader(dp)
+    dp = dp.shuffle(buffer_size=args.archive_size).set_shuffle(False)  # intra-archive shuffling
+    dp = dp.sharding_filter()
+    return dp.map(_decode_tar_entry)
+
+def make_dp(root, transforms, args):
+    if args.archive in ("pickle", "torch"):
+        dp = _make_dp_from_archive(root, args)
+    elif args.archive == "tar":
+        dp = _make_dp_from_tars(root, args)
+    else:
+        dp = _make_dp_from_image_folder(root)
+
+    dp = dp.map(partial(_apply_tranforms, transforms=transforms))
     dp = _LenSetter(dp, root=root, args=args)
     return dp
 

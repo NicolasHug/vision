@@ -6,12 +6,12 @@ import warnings
 import helpers
 import presets
 import torch
+import torch.distributed as dist
 import torch.utils.data
 import torchvision
 import utils
 from torch import nn
-from torchdata.dataloader2 import adapter, DataLoader2, MultiProcessingReadingService
-import torch.distributed as dist
+from torchdata.dataloader2 import adapter, DataLoader2, MultiProcessingReadingService, PrototypeMultiProcessingReadingService
 
 
 def train_one_epoch(model, criterion, optimizer, data_loader, device, epoch, args):
@@ -107,8 +107,8 @@ def create_data_loaders(args):
         dataset_dir += "/tinyimagenet/081318/"
     else:
         dataset_dir += "/imagenet_full_size/061417/"
-    
-    if args.pickle:
+
+    if args.archive is not None:
         dataset_dir += "archives/"
 
     train_dir = os.path.join(dataset_dir, "train")
@@ -119,8 +119,9 @@ def create_data_loaders(args):
     if args.no_transforms:
         train_preset = val_preset = helpers.no_transforms
     else:
-        train_preset = presets.ClassificationPresetTrain(crop_size=train_crop_size)
-        val_preset = presets.ClassificationPresetEval(crop_size=val_crop_size, resize_size=val_resize_size)
+        on_pil_images = args.archive_content != "tensor"
+        train_preset = presets.ClassificationPresetTrain(crop_size=train_crop_size, on_pil_images=on_pil_images)
+        val_preset = presets.ClassificationPresetEval(crop_size=val_crop_size, resize_size=val_resize_size, on_pil_images=on_pil_images)
 
     if args.ds_type == "dp":
         builder = helpers.make_pre_loaded_dp if args.preload_ds else helpers.make_dp
@@ -181,17 +182,18 @@ def create_data_loaders(args):
         # Note: we are batching and collating here *after the transforms*, which is consistent with DLV1.
         # But maybe it would be more efficient to do that before, so that the transforms can work on batches??
 
+        ReadingService = PrototypeMultiProcessingReadingService if args.proto_rs else MultiProcessingReadingService
         train_dataset = train_dataset.batch(args.batch_size, drop_last=True).collate()
         train_data_loader = DataLoader2(
             train_dataset,
             datapipe_adapter_fn=adapter.Shuffle(),
-            reading_service=MultiProcessingReadingService(num_workers=args.workers),
+            reading_service=ReadingService(num_workers=args.workers),
         )
 
         val_dataset = val_dataset.batch(args.batch_size, drop_last=True).collate()  # TODO: Do we need drop_last here?
         val_data_loader = DataLoader2(
             val_dataset,
-            reading_service=MultiProcessingReadingService(num_workers=args.workers),
+            reading_service=ReadingService(num_workers=args.workers),
         )
     else:
         raise ValueError(f"invalid data-loader param. Got {args.data_loader}")
@@ -204,7 +206,7 @@ def main(args):
         utils.mkdir(args.output_dir)
 
     utils.init_distributed_mode(args)
-    # print("\n".join(f"{k}: {str(v)}" for k, v in sorted(dict(vars(args)).items())))
+    print("\n".join(f"{k}: {str(v)}" for k, v in sorted(dict(vars(args)).items())))
 
     device = torch.device(args.device)
 
@@ -216,7 +218,7 @@ def main(args):
 
     train_data_loader, val_data_loader, train_sampler = create_data_loaders(args)
 
-    num_classes = 1000  # I'm lazy. TODO change this
+    num_classes = 200 if args.tiny else 1000  # I'm lazy. TODO change this
 
     print("Creating model")
     model = torchvision.models.__dict__[args.model](weights=args.weights, num_classes=num_classes)
@@ -353,7 +355,11 @@ def get_args_parser(add_help=True):
     )
 
     parser.add_argument("--tiny", action="store_true")
-    parser.add_argument("--pickle", action="store_true")
+    parser.add_argument("--archive", default=None, help="tar or pickle or torch")
+    parser.add_argument("--archive-content", default=None, help="tensor or bytesio. Only for pickle and torch archives.")
+    parser.add_argument("--archive-size", type=int, default=None, help="Number of samples in each archive.")
+    parser.add_argument("--proto-rs", action="store_true", help="Whether to use the prototype reading service")
+
 
     return parser
 
