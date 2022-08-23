@@ -81,7 +81,12 @@ def _decode_path(data, root, category_to_int):
     label = category_to_int[category]
     return image, label
 
-def _make_dp_from_image_folder(root):
+def __read_file(path):  # TODO: remove this
+    with open(path, "rb") as f:
+        out = f.read()
+    return out, None
+
+def _make_dp_from_image_folder(root, args):
     root = Path(root).expanduser().resolve()
     categories = sorted(entry.name for entry in os.scandir(root) if entry.is_dir())
     category_to_int = {category: i for (i, category) in enumerate(categories)}
@@ -89,8 +94,12 @@ def _make_dp_from_image_folder(root):
     dp = FileLister(str(root), recursive=True, masks=["*.JPEG"])
 
     dp = dp.shuffle(buffer_size=INFINITE_BUFFER_SIZE).set_shuffle(False).sharding_filter()
-    dp = dp.map(partial(_decode_path, root=root, category_to_int=category_to_int))
+    if "no_decode" in args:  # TODO: remove this cond, it's just use for benchmarking
+        dp = dp.map(__read_file)
+    else:
+        dp = dp.map(partial(_decode_path, root=root, category_to_int=category_to_int))
     return dp
+
 
 def _decode_bytesio(data):
     image, label = data
@@ -114,8 +123,10 @@ def _make_dp_from_archive(root, args):
     # loaded by all workers, possibly in vain. Hopefully the new experimental MP
     # reading service will improve this?
     dp = dp.sharding_filter()
-    decode = {"bytesio": _decode_bytesio, "tensor": _decode_tensor}[args.archive_content]
-    return dp.map(decode)
+    if "no_decode" not in args:  # TODO: remove this cond, it's just use for benchmarking
+        decode = {"bytesio": _decode_bytesio, "tensor": _decode_tensor}[args.archive_content]
+        dp = dp.map(decode)
+    return dp
 
 def _decode_tar_entry(data):
     # Note on how we retrieve the label: each file name in the archive (the
@@ -126,6 +137,10 @@ def _decode_tar_entry(data):
     image = Image.open(io_stream).convert("RGB")
     return image, label
 
+def __open_tar_entry(data):  # TODO: remove this
+    _, io_stream = data
+    return io_stream.read(), None
+
 def _make_dp_from_tars(root, args):
 
     dp = FileLister(str(root), masks=[f"archive_{args.archive_size}*.tar"])
@@ -134,7 +149,11 @@ def _make_dp_from_tars(root, args):
     dp = TarArchiveLoader(dp)
     dp = dp.shuffle(buffer_size=args.archive_size).set_shuffle(False)  # intra-archive shuffling
     dp = dp.sharding_filter()
-    return dp.map(_decode_tar_entry)
+    if "no_decode" in args:  # TODO: remove this cond, it's just use for benchmarking
+        dp = dp.map(__open_tar_entry)
+    else:
+        dp = dp.map(_decode_tar_entry)
+    return dp
 
 def make_dp(root, transforms, args):
     if args.archive in ("pickle", "torch"):
@@ -142,7 +161,7 @@ def make_dp(root, transforms, args):
     elif args.archive == "tar":
         dp = _make_dp_from_tars(root, args)
     else:
-        dp = _make_dp_from_image_folder(root)
+        dp = _make_dp_from_image_folder(root, args)
 
     dp = dp.map(partial(_apply_tranforms, transforms=transforms))
     dp = _LenSetter(dp, root=root, args=args)
