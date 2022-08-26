@@ -1,8 +1,6 @@
-from torchvision.datasets import ImageFolder
+from ffcv.fields import IntField, RGBImageField
 from ffcv.writer import DatasetWriter
-
-
-from ffcv.fields import RGBImageField, IntField
+from torchvision.datasets import ImageFolder
 
 root = "/datasets01_ontap/tinyimagenet/081318/train/"
 ds = ImageFolder(root)
@@ -12,8 +10,8 @@ write_path = "/fsx_isolated/nicolashug/tinyimagenet/081318/archives/train/ffcv_d
 writer = DatasetWriter(
     write_path,
     {
-        'img': RGBImageField(write_mode="raw"),
-        'label': IntField(),
+        "img": RGBImageField(write_mode="raw"),
+        "label": IntField(),
     },
     num_workers=24,
 )

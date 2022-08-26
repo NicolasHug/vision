@@ -1,20 +1,19 @@
+import argparse
 import datetime
 import io
+from pathlib import Path
 from time import time
+
 import numpy as np
 
 import torch
 import torchvision
 import torchvision.transforms as transforms
-from pathlib import Path
-from dataset_helpers import make_dp, make_ffcv_dataloader, make_mapstyle
+from dataset_helpers import make_dp, make_ffcv_dataloader
 from ffcv import libffcv
 from ffcv.loader import Loader as FFCVLoader
 from PIL import Image
-from references.torchdata_benchmarks.presets import ClassificationPresetTrain
 from torchvision.io import decode_jpeg, ImageReadMode, read_file
-from distutils.dir_util import copy_tree
-import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--fs", default="fsx_isolated")
@@ -83,9 +82,12 @@ def iterate_one_epoch(obj):
 def bytesio_to_tensor(bytesio):
     return torch.frombuffer(bytesio.getbuffer(), dtype=torch.uint8)
 
+def just_read_the_file(img_path):
+    with open(img_path, "rb") as f:
+        return f.read()
 
-mapstyle_ds = make_mapstyle(root=JPEG_FILES_ROOT)
-no_archive_dp = make_dp(root=JPEG_FILES_ROOT, archive=None)
+mapstyle_ds = torchvision.datasets.ImageFolder(JPEG_FILES_ROOT, loader=just_read_the_file)
+no_archive_dp = make_dp(root=JPEG_FILES_ROOT, archive=None).map(just_read_the_file)
 
 tar_dp = make_dp(root=ARCHIVE_ROOT, archive="tar")
 
@@ -148,13 +150,17 @@ print()
 
 
 from pathlib import Path
+
 files = list(Path(f"{FS}/nicolashug/tinyimagenet/081318/train/n01443537/").glob("*.JPEG"))
 tensors = [read_file(str(filepath)) for filepath in files]
 np_arrays = [t.numpy() for t in tensors]
 
 _dest = np.empty((64, 64, 3), dtype=np.uint8)
+
+
 def decode_turbo(a):
     libffcv.imdecode(a, _dest, 64, 64, 64, 64, 0, 0, 1, 1, False, False)
+
 
 bytesio_list = []
 for filepath in files:
@@ -162,7 +168,11 @@ for filepath in files:
         bytesio_list.append(io.BytesIO(f.read()))
 
 print("PIL.Image.open(bytesio).load()")
-bench(lambda l: [Image.open(bytesio).convert("RGB").load() for bytesio in l], bytesio_list, num_images_per_call=len(bytesio_list))
+bench(
+    lambda l: [Image.open(bytesio).convert("RGB").load() for bytesio in l],
+    bytesio_list,
+    num_images_per_call=len(bytesio_list),
+)
 print("decode_jpeg(tensor)")
 bench(lambda l: [decode_jpeg(t, mode=ImageReadMode.RGB) for t in l], tensors, num_images_per_call=len(tensors))
 print("libffcv.imdecode - using libjpeg-turbo")
@@ -172,6 +182,7 @@ print()
 ################
 # TRANSFORMING #
 ################
+
 
 class ClassificationPresetTrain:
     def __init__(self, *, on):
@@ -187,7 +198,6 @@ class ClassificationPresetTrain:
 
         if on == "tensor":
             trans += [lambda x: x.contiguous()]
-        
 
         trans += [transforms.RandomResizedCrop(crop_size, antialias=True)]
         if hflip_prob > 0:
@@ -220,8 +230,10 @@ print()
 # DATA-READING + DECODING #
 ###########################
 
+
 def decode(encoded_tensor):
     return decode_jpeg(encoded_tensor, mode=ImageReadMode.RGB)
+
 
 pickle_decoded_dp = make_dp(root=ARCHIVE_ROOT, archive="pickle", archive_content="decoded")
 torch_decoded_dp = make_dp(root=ARCHIVE_ROOT, archive="torch", archive_content="decoded")
@@ -259,6 +271,7 @@ bench(iterate_one_epoch, inp=torch_decoded_dp, warmup=1, num_exp=5, num_images_p
 
 print("FFCV loading (pre-decoded)")
 bench(iterate_one_epoch, inp=ffcv_decoded, warmup=1, num_exp=5, num_images_per_call=len(mapstyle_ds))
+print()
 
 ########################################
 # DATA-READING + DECODING + TRANSFORMS #
@@ -269,11 +282,20 @@ ffcv_decoded_transforms = make_ffcv_dataloader(root=ARCHIVE_ROOT, transforms=Tru
 ffcv_encoded_transforms_torchvision = make_ffcv_dataloader(root=ARCHIVE_ROOT, transforms="vision", encoded=True)
 ffcv_decoded_transforms_torchvision = make_ffcv_dataloader(root=ARCHIVE_ROOT, transforms="vision", encoded=False)
 
-mapstyle_ds_transforms = torchvision.datasets.ImageFolder(JPEG_FILES_ROOT, transform=ClassificationPresetTrain(on="pil"))
-
 def tensor_loader(path):
     return decode(read_file(path))
-mapstyle_ds_transforms_tensor = torchvision.datasets.ImageFolder(JPEG_FILES_ROOT, loader=tensor_loader, transform=ClassificationPresetTrain(on="tensor"))
+
+def pil_loader(path):
+    return Image.open(path).convert("RGB")
+
+mapstyle_ds_transforms_pil = torchvision.datasets.ImageFolder(
+    JPEG_FILES_ROOT, transform=ClassificationPresetTrain(on="pil")
+)
+mapstyle_ds_transforms_tensor = torchvision.datasets.ImageFolder(
+    JPEG_FILES_ROOT, loader=tensor_loader, transform=ClassificationPresetTrain(on="tensor")
+)
+no_archive_dp_transforms_pil = make_dp(root=JPEG_FILES_ROOT, archive=None).map(pil_loader).map(ClassificationPresetTrain(on="pil"))
+no_archive_dp_transforms_tensor = make_dp(root=JPEG_FILES_ROOT, archive=None).map(tensor_loader).map(ClassificationPresetTrain(on="tensor"))
 
 print("pickle bytesio->ToTensor()->decode_jpeg()->Transforms()")
 bench(
@@ -296,37 +318,82 @@ bench(
 )
 
 print("FFCV loading + decoding + transforms")
-bench(iterate_one_epoch, inp=ffcv_encoded_transforms, warmup=1, num_exp=5, unit="m", num_images_per_call=len(mapstyle_ds))
-
-
-print("File-based Mapstyle -> decode_jpeg() -> Transforms")  # a.k.a the current torchvision transforms
-bench(iterate_one_epoch, inp=mapstyle_ds_transforms_tensor, warmup=1, num_exp=5, unit="m", num_images_per_call=len(mapstyle_ds))
+bench(
+    iterate_one_epoch, inp=ffcv_encoded_transforms, warmup=1, num_exp=5, unit="m", num_images_per_call=len(mapstyle_ds)
+)
 
 print("File-based Mapstyle -> Image.open() -> PIL transforms")  # a.k.a the current torchvision transforms
-bench(iterate_one_epoch, inp=mapstyle_ds_transforms, warmup=1, num_exp=5, unit="m", num_images_per_call=len(mapstyle_ds))
+bench(
+    iterate_one_epoch, inp=mapstyle_ds_transforms_pil, warmup=1, num_exp=5, unit="m", num_images_per_call=len(mapstyle_ds)
+)
 
-print("FFCV loading + decoding + transforms (torchvision)")
-bench(iterate_one_epoch, inp=ffcv_encoded_transforms_torchvision, warmup=1, num_exp=5, unit="m", num_images_per_call=len(mapstyle_ds))
+print("File-based Mapstyle -> decode_jpeg() -> Transforms")
+bench(
+    iterate_one_epoch,
+    inp=mapstyle_ds_transforms_tensor,
+    warmup=1,
+    num_exp=5,
+    unit="m",
+    num_images_per_call=len(mapstyle_ds),
+)
+
+print("File-based DP -> Image.open() -> PIL transforms")  # a.k.a the current torchvision transforms
+bench(
+    iterate_one_epoch, inp=no_archive_dp_transforms_pil, warmup=1, num_exp=5, unit="m", num_images_per_call=len(mapstyle_ds)
+)
+
+print("File-based DP -> decode_jpeg() -> Transforms")
+bench(
+    iterate_one_epoch,
+    inp=no_archive_dp_transforms_tensor,
+    warmup=1,
+    num_exp=5,
+    unit="m",
+    num_images_per_call=len(mapstyle_ds),
+)
 
 print("pickle pre-decoded -> Transforms()")
-bench(iterate_one_epoch, inp=pickle_decoded_dp.map(ClassificationPresetTrain(on="tensor")), warmup=1, num_exp=5, unit="m", num_images_per_call=len(mapstyle_ds))
+bench(
+    iterate_one_epoch,
+    inp=pickle_decoded_dp.map(ClassificationPresetTrain(on="tensor")),
+    warmup=1,
+    num_exp=5,
+    unit="m",
+    num_images_per_call=len(mapstyle_ds),
+)
 
 print("torch pre-decoded -> Transforms()")
-bench(iterate_one_epoch, inp=torch_decoded_dp.map(ClassificationPresetTrain(on="tensor")), warmup=1, num_exp=5, unit="m", num_images_per_call=len(mapstyle_ds))
+bench(
+    iterate_one_epoch,
+    inp=torch_decoded_dp.map(ClassificationPresetTrain(on="tensor")),
+    warmup=1,
+    num_exp=5,
+    unit="m",
+    num_images_per_call=len(mapstyle_ds),
+)
 
 print("FFCV loading (pre-decoded) + transforms")
-bench(iterate_one_epoch, inp=ffcv_decoded_transforms, warmup=1, num_exp=5, unit="m", num_images_per_call=len(mapstyle_ds))
+bench(
+    iterate_one_epoch, inp=ffcv_decoded_transforms, warmup=1, num_exp=5, unit="m", num_images_per_call=len(mapstyle_ds)
+)
 
-print("FFCV loading (pre-decoded) + transforms (torchvision)")
-bench(iterate_one_epoch, inp=ffcv_decoded_transforms_torchvision, warmup=1, num_exp=5, unit="m", num_images_per_call=len(mapstyle_ds))
-
-# Need to check if FFCV is only using 1 CPU or more.
-# Looks a bit fishy, tried again setting context num_workers=1
-# If it's still way faster maybe it's because the pre-fetching still happens in the background even with 1 thread.
-
-# Benchmark FFCV with torchvision transforms
-# Benchmark mapstyle entire pipeline
-
-# FFCV and DataLoader with num_workers=12
-# FFCV with num_workers=12 and batch_size>1
-# Maybe one day: FFCV with its normal tranforms but overriding the memory allocation
+# TODO:
+# - Philip:
+#   - Add support for data-loaders. For DPs we mostly care about DataLoader2 (https://github.com/pytorch/vision/pull/6196/files#diff-32b42103e815b96c670a0b5f0db055fe63f10fc8776ccbb6aa9b61a6940abba0R201-R209)
+#   - Add support for num_workers > 1 -- See note in FFCV's Loader about need for batch-size > 1
+#
+# - Run similar benchmarks internally - torchdata will dedicate time for this
+#
+# - investigate why tar reading is slower than the rest of the archives. Vitaly
+#   is on it.
+#   - If tar ends up being faster, worth considering storing tensors or bytesio
+#     in the tar files as well?
+#
+# - benchmark on BIG dataset, a lot bigger than ImageNet. Map-Style may struggle
+#   with these because of it requires shuffling a huge array of indices
+#
+# - Eventually: It'd be interesting to run FFCV with its built-in tranforms, but
+#   overriding the memory allocation with None as done here
+#   https://github.com/libffcv/ffcv/blob/f25386557e213711cc8601833add36ff966b80b2/ffcv/transforms/module.py#L30-L31
+#   This would give an idea of how much this memory allocation thing accounts
+#   for. Should be doable with a simple wrapper class.

@@ -1,7 +1,6 @@
 import pickle
 from pathlib import Path
 from typing import List
-from ffcv.pipeline.operation import Operation
 
 import numpy as np
 
@@ -11,8 +10,8 @@ import torchvision.transforms as T
 from ffcv.fields.basics import IntDecoder
 from ffcv.fields.decoders import RandomResizedCropRGBImageDecoder, SimpleRGBImageDecoder
 from ffcv.loader import Loader as FFCVLoader, OrderOption
+from ffcv.pipeline.operation import Operation
 from ffcv.transforms import NormalizeImage, RandomHorizontalFlip, ToTensor, ToTorchImage
-from PIL import Image
 from torchdata.datapipes.iter import FileLister, FileOpener, IterDataPipe, TarArchiveLoader
 
 
@@ -58,26 +57,16 @@ class ConcaterIterable(IterDataPipe):
         for iterable in self.source_datapipe:
             yield from iterable
 
-
-def _read_file(path):
-    with open(path, "rb") as f:
-        out = f.read()
-    return out
-
-
 def _make_dp_from_image_folder(*, root):
-    root = Path(root).expanduser().resolve()
-
-    dp = FileLister(str(root), recursive=True, masks=["*.JPEG"])
-
+    dp = FileLister(root, recursive=True, masks=["*.JPEG"])
     dp = dp.shuffle(buffer_size=INFINITE_BUFFER_SIZE).set_shuffle(False).sharding_filter()
-    dp = dp.map(_read_file)
-
     return dp
+
 
 def _drop_label(data):
     img_data, label = data
     return img_data
+
 
 def _make_dp_from_archive(*, root, archive, archive_content, archive_size):
     ext = "pt" if archive == "torch" else "pkl"
@@ -94,6 +83,7 @@ def _make_dp_from_archive(*, root, archive, archive_content, archive_size):
     dp = dp.sharding_filter()
 
     return dp
+
 
 def _read_tar_entry(data):  # TODO: remove this
     _, io_stream = data
@@ -115,7 +105,9 @@ def _make_dp_from_tars(*, root, archive_size):
 
 def make_dp(*, root, archive=None, archive_content=None, archive_size=500):
     if archive in ("pickle", "torch"):
-        dp = _make_dp_from_archive(root=root, archive=archive, archive_content=archive_content, archive_size=archive_size)
+        dp = _make_dp_from_archive(
+            root=root, archive=archive, archive_content=archive_content, archive_size=archive_size
+        )
     elif archive == "tar":
         dp = _make_dp_from_tars(root=root, archive_size=archive_size)
     else:
@@ -125,41 +117,18 @@ def make_dp(*, root, archive=None, archive_content=None, archive_size=500):
     return dp
 
 
-def make_mapstyle(root):
-    def no_decoding_loader(img_path):
-        with open(img_path, "rb") as f:
-            f.read()
-
-    return torchvision.datasets.ImageFolder(root, loader=no_decoding_loader)
-
-
-class C(torch.nn.Module):
-    def forward(self, x):
-        return x.permute([0, 3, 1, 2])
-
-class Zob(torch.nn.Module):
-    def forward(self, x):
-        return torch.from_numpy(x)
-
 def make_ffcv_dataloader(*, root, transforms, encoded):
     IMAGENET_MEAN = (0.485, 0.456, 0.406)
     IMAGENET_STD = (0.229, 0.224, 0.225)
     hflip_prob = 0.5
     crop_size = 224
-    if transforms == "vision": # TODO: avoid repeating this
+    if transforms == "vision":
         img_pipeline: List[Operation] = [
             SimpleRGBImageDecoder(),
-            # RandomResizedCropRGBImageDecoder(
-            #     scale=(0.08, 1.0),
-            #     ratio=(3.0 / 4.0, 4.0 / 3.0),
-            #     output_size=(crop_size, crop_size),
-            # ),
             ToTensor(),
             ToTorchImage(),
-
             T.RandomResizedCrop(crop_size, antialias=True),
             T.RandomHorizontalFlip(hflip_prob),
-
             T.ConvertImageDtype(torch.float),
             T.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
         ]
@@ -184,10 +153,14 @@ def make_ffcv_dataloader(*, root, transforms, encoded):
 
     return FFCVLoader(
         f"{root}/{'ffcv' if encoded else 'ffcv_decoded'}.beton",
-        batch_size=1,  # Note: most of FFCV //ism is batch-wise, batch-size>1 will enable better //ism
+        batch_size=1,
         drop_last=False,
+        # Note: most of FFCV //ism is batch-wise, so when setting num_workers > 1
+        # it's worth also setting a higher batch-size (>= num_workers)
+        # For fairer comparison, maybe also set the same batch-size in
+        # DataLoader[2] when doing this?
         num_workers=1,
-        os_cache=False,
+        os_cache=False,  # Because otherwise the entire dataset is stored in RAM
         order=OrderOption.QUASI_RANDOM,
         pipelines={
             "img": img_pipeline,
