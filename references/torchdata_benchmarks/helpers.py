@@ -10,7 +10,7 @@ import torch
 import torch.distributed as dist
 import torchvision
 from PIL import Image
-from torchdata.datapipes.iter import FileLister, IterDataPipe, FileOpener, TarArchiveLoader
+from torchdata.datapipes.iter import FileLister, FileOpener, IterDataPipe, TarArchiveLoader
 
 
 # TODO: maybe infinite buffer can / is already natively supported by torchdata?
@@ -48,6 +48,7 @@ class _LenSetter(IterDataPipe):
         else:
             return self.size
 
+
 def _apply_tranforms(img_and_label, transforms):
     img, label = img_and_label
     return transforms(img), label
@@ -81,10 +82,12 @@ def _decode_path(data, root, category_to_int):
     label = category_to_int[category]
     return image, label
 
+
 def __read_file(path):  # TODO: remove this
     with open(path, "rb") as f:
         out = f.read()
     return out, None
+
 
 def _make_dp_from_image_folder(root, args):
     root = Path(root).expanduser().resolve()
@@ -106,13 +109,19 @@ def _decode_bytesio(data):
     image = Image.open(image).convert("RGB")
     return image, label
 
+
 def _decode_tensor(data):
     image, label = data
     image = torchvision.io.decode_jpeg(image, mode=torchvision.io.ImageReadMode.RGB)
     return image, label
 
+
+def _decode_decoded(data):
+    return data  # decoded_image, label
+
+
 def _make_dp_from_archive(root, args):
-    ext = "pt" if args.archive== "torch" else "pkl"
+    ext = "pt" if args.archive == "torch" else "pkl"
     dp = FileLister(str(root), masks=[f"archive_{args.archive_size}*{args.archive_content}*.{ext}"])
     dp = dp.shuffle(buffer_size=INFINITE_BUFFER_SIZE).set_shuffle(False)  # inter-archive shuffling
     dp = ArchiveLoader(dp, loader=args.archive)
@@ -124,9 +133,12 @@ def _make_dp_from_archive(root, args):
     # reading service will improve this?
     dp = dp.sharding_filter()
     if "no_decode" not in args:  # TODO: remove this cond, it's just use for benchmarking
-        decode = {"bytesio": _decode_bytesio, "tensor": _decode_tensor}[args.archive_content]
+        decode = {"bytesio": _decode_bytesio, "tensor": _decode_tensor, "decoded": _decode_decoded}[
+            args.archive_content
+        ]
         dp = dp.map(decode)
     return dp
+
 
 def _decode_tar_entry(data):
     # Note on how we retrieve the label: each file name in the archive (the
@@ -137,9 +149,11 @@ def _decode_tar_entry(data):
     image = Image.open(io_stream).convert("RGB")
     return image, label
 
+
 def __open_tar_entry(data):  # TODO: remove this
     _, io_stream = data
     return io_stream.read(), None
+
 
 def _make_dp_from_tars(root, args):
 
@@ -154,6 +168,7 @@ def _make_dp_from_tars(root, args):
     else:
         dp = dp.map(_decode_tar_entry)
     return dp
+
 
 def make_dp(root, transforms, args):
     if args.archive in ("pickle", "torch"):

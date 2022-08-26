@@ -1,7 +1,7 @@
 import argparse
 import io
-import tarfile
 import pickle
+import tarfile
 from math import ceil
 from pathlib import Path
 
@@ -13,7 +13,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--input-dir", default="/datasets01_ontap/tinyimagenet/081318/train/")
 parser.add_argument("--output-dir", default="./tinyimagenet/081318/train")
 parser.add_argument("--archiver", default="pickle", help="pickle or tar or torch")
-parser.add_argument("--archive-content", default="BytesIo", help="BytesIO or tensor. Only valid for pickle or torch archivers")
+parser.add_argument(
+    "--archive-content",
+    default="BytesIo",
+    help="BytesIO or tensor or decoded. Only valid for pickle or torch archivers.",
+)
 parser.add_argument("--archive-size", type=int, default=500, help="Number of samples per archive")
 parser.add_argument("--shuffle", type=bool, default=True, help="Whether to shuffle the samples within each archive")
 
@@ -25,14 +29,24 @@ parser.add_argument("--shuffle", type=bool, default=True, help="Whether to shuff
 #   label in each file name in the archive. This is ugly, but OK at this stage.
 # - pickle or torch: in this case, each archive contains a list of tuples. Each
 #   tuple represents a sample in the form (img_data, label). label is always an
-#   int, and img_data is the *encoded* jpeg bytes which can be represented
-#   either as a tensor or a BytesIO object, depending on the archive-content
-#   parameter.
+#   int. img_data is depends on the archive-content parameter:
+#   - bytesio: the *encoded* jpeg bytes which stored in a BytesIO object
+#   - tensor: the *encoded* jpeg bytes which stored in a uint8 (bytes) Tensor object
+#   - decoded: the *decoded* image (i.e. pixel data) in a uint8 Tensor.
+#     Technically we could also store the decoded data in a BytesIO object, but
+#     it's annoying as we need to keep track of the shape of the image. So it's
+#     not implemented.
 
 
 class Archiver:
     def __init__(
-        self, input_dir, output_dir, archiver="pickle", archive_content="BytesIO", archive_size=500, shuffle=True,
+        self,
+        input_dir,
+        output_dir,
+        archiver="pickle",
+        archive_content="BytesIO",
+        archive_size=500,
+        shuffle=True,
     ):
         self.input_dir = input_dir
         self.archiver = archiver.lower()
@@ -44,7 +58,6 @@ class Archiver:
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def archive_dataset(self):
-
         def loader(path):
             # identity loader to avoid decoding images with PIL or something else
             # This means the dataset will always return (path_to_image_file, int_label)
@@ -63,11 +76,9 @@ class Archiver:
             archive_samples.append(dataset[idx])
             if ((i + 1) % self.archive_size == 0) or (i == len(self.indices) - 1):
                 archive_path = self._get_archive_path(archive_samples, last_idx=i)
-                {
-                    "pickle": self._save_pickle,
-                    "torch": self._save_torch,
-                    "tar": self._save_tar,
-                }[self.archiver](archive_samples, archive_path)
+                {"pickle": self._save_pickle, "torch": self._save_torch, "tar": self._save_tar,}[
+                    self.archiver
+                ](archive_samples, archive_path)
 
                 archive_samples = []
 
@@ -78,10 +89,13 @@ class Archiver:
         num_samples_in_archive = len(samples)
 
         archive_content_str = "" if self.archiver == "tar" else f"{self.archive_content}_"
-        path = self.output_dir / f"archive_{self.archive_size}_{archive_content_str}{current_archive_number:0{zero_pad_fmt}d}"
+        path = (
+            self.output_dir
+            / f"archive_{self.archive_size}_{archive_content_str}{current_archive_number:0{zero_pad_fmt}d}"
+        )
         print(f"Archiving {num_samples_in_archive} samples in {path}")
         return path
-    
+
     def _make_content(self, samples):
         archive_content = []
         for sample_file_name, label in samples:
@@ -90,6 +104,9 @@ class Archiver:
                     img_data = io.BytesIO(f.read())
             elif self.archive_content == "tensor":  # Note: this doesn't decode anything
                 img_data = torchvision.io.read_file(sample_file_name)
+            elif self.archive_content == "decoded":
+                img_data = torchvision.io.read_file(sample_file_name)
+                img_data = torchvision.io.decode_jpeg(img_data, mode=torchvision.io.ImageReadMode.RGB)
             else:
                 raise ValueError(f"Unsupported {self.archive_content = }")
             archive_content.append((img_data, label))

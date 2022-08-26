@@ -24,8 +24,8 @@ class ClassificationPresetTrain:
             trans += [transforms.PILToTensor()]
 
         trans += [
-                transforms.ConvertImageDtype(torch.float),
-                transforms.Normalize(mean=mean, std=std),
+            transforms.ConvertImageDtype(torch.float),
+            transforms.Normalize(mean=mean, std=std),
         ]
 
         self.transforms = transforms.Compose(trans)
@@ -49,11 +49,11 @@ class ClassificationPresetEval:
         if not on_pil_images:
             trans += [lambda x: x.contiguous()]
         trans += [
-                transforms.Resize(resize_size, antialias=True),
-                transforms.CenterCrop(crop_size),
-                transforms.PILToTensor() if on_pil_images else torch.nn.Identity(),
-                transforms.ConvertImageDtype(torch.float),
-                transforms.Normalize(mean=mean, std=std),
+            transforms.Resize(resize_size, antialias=True),
+            transforms.CenterCrop(crop_size),
+            transforms.PILToTensor() if on_pil_images else torch.nn.Identity(),
+            transforms.ConvertImageDtype(torch.float),
+            transforms.Normalize(mean=mean, std=std),
         ]
         self.transforms = transforms.Compose(trans)
 

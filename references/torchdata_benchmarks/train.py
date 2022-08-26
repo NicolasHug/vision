@@ -11,7 +11,12 @@ import torch.utils.data
 import torchvision
 import utils
 from torch import nn
-from torchdata.dataloader2 import adapter, DataLoader2, MultiProcessingReadingService, PrototypeMultiProcessingReadingService
+from torchdata.dataloader2 import (
+    adapter,
+    DataLoader2,
+    MultiProcessingReadingService,
+    PrototypeMultiProcessingReadingService,
+)
 
 
 def train_one_epoch(model, criterion, optimizer, data_loader, device, epoch, args):
@@ -119,9 +124,11 @@ def create_data_loaders(args):
     if args.no_transforms:
         train_preset = val_preset = helpers.no_transforms
     else:
-        on_pil_images = args.archive_content != "tensor"
+        on_pil_images = args.archive_content.lower() == "bytesio"  # both "tensor" and "decoded" are on tensors
         train_preset = presets.ClassificationPresetTrain(crop_size=train_crop_size, on_pil_images=on_pil_images)
-        val_preset = presets.ClassificationPresetEval(crop_size=val_crop_size, resize_size=val_resize_size, on_pil_images=on_pil_images)
+        val_preset = presets.ClassificationPresetEval(
+            crop_size=val_crop_size, resize_size=val_resize_size, on_pil_images=on_pil_images
+        )
 
     if args.ds_type == "dp":
         builder = helpers.make_pre_loaded_dp if args.preload_ds else helpers.make_dp
@@ -356,10 +363,11 @@ def get_args_parser(add_help=True):
 
     parser.add_argument("--tiny", action="store_true")
     parser.add_argument("--archive", default=None, help="tar or pickle or torch")
-    parser.add_argument("--archive-content", default=None, help="tensor or bytesio. Only for pickle and torch archives.")
+    parser.add_argument(
+        "--archive-content", default=None, help="tensor or bytesio or decoded. Only for pickle and torch archives."
+    )
     parser.add_argument("--archive-size", type=int, default=None, help="Number of samples in each archive.")
     parser.add_argument("--proto-rs", action="store_true", help="Whether to use the prototype reading service")
-
 
     return parser
 
