@@ -7,6 +7,7 @@ import numpy as np
 import torch
 import torchvision
 import torchvision.transforms as T
+import webdataset as wds
 from ffcv.fields.basics import IntDecoder
 from ffcv.fields.decoders import RandomResizedCropRGBImageDecoder, SimpleRGBImageDecoder
 from ffcv.loader import Loader as FFCVLoader, OrderOption
@@ -57,6 +58,7 @@ class ConcaterIterable(IterDataPipe):
         for iterable in self.source_datapipe:
             yield from iterable
 
+
 def _make_dp_from_image_folder(*, root):
     dp = FileLister(root, recursive=True, masks=["*.JPEG"])
     dp = dp.shuffle(buffer_size=INFINITE_BUFFER_SIZE).set_shuffle(False).sharding_filter()
@@ -103,6 +105,12 @@ def _make_dp_from_tars(*, root, archive_size):
     return dp
 
 
+def _make_webdataset(*, root, archive_size):
+    archives = Path(root).glob(f"archive_{archive_size}*.tar")
+    archives = [str(a) for a in archives]
+    return wds.WebDataset(archives)  # This will read and load the data as bytes
+
+
 def make_dp(*, root, archive=None, archive_content=None, archive_size=500):
     if archive in ("pickle", "torch"):
         dp = _make_dp_from_archive(
@@ -110,6 +118,8 @@ def make_dp(*, root, archive=None, archive_content=None, archive_size=500):
         )
     elif archive == "tar":
         dp = _make_dp_from_tars(root=root, archive_size=archive_size)
+    elif archive == "webdataset":
+        dp = _make_webdataset(root=root, archive_size=archive_size)
     else:
         dp = _make_dp_from_image_folder(root=root)
 
