@@ -1,7 +1,6 @@
-from dataset_helpers import make_dp, make_ffcv_dataloader
-
 from bench_data_reading import pickle_bytesio_dp, torch_bytesio_dp
-from common import bench, decode, iterate_one_epoch, ARCHIVE_ROOT, bytesio_to_tensor
+from common import ARCHIVE_ROOT, bench, bytesio_to_tensor, decode, iterate_one_epoch
+from dataset_helpers import make_dp, make_ffcv_dataloader
 
 
 ffcv_encoded = make_ffcv_dataloader(root=ARCHIVE_ROOT, transforms=False, encoded=True)

@@ -68,6 +68,6 @@ def iterate_one_epoch(obj):
 def decode(encoded_tensor):
     return decode_jpeg(encoded_tensor, mode=ImageReadMode.RGB)
 
+
 def bytesio_to_tensor(bytesio):
     return torch.frombuffer(bytesio.getbuffer(), dtype=torch.uint8)
-

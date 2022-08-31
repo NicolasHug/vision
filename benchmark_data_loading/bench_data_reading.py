@@ -1,6 +1,6 @@
 import torchvision
 
-from common import ARCHIVE_ROOT, bench, iterate_one_epoch, JPEG_FILES_ROOT, bytesio_to_tensor
+from common import ARCHIVE_ROOT, bench, bytesio_to_tensor, iterate_one_epoch, JPEG_FILES_ROOT
 from dataset_helpers import make_dp
 
 
