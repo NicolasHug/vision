@@ -5,16 +5,18 @@ from PIL import Image
 from torchvision.io import read_file
 
 from bench_data_reading import pickle_bytesio_dp, torch_bytesio_dp
-from common import ARCHIVE_ROOT, JPEG_FILES_ROOT, bench, bytesio_to_tensor, decode, iterate_one_epoch
+from common import ARCHIVE_ROOT, JPEG_FILES_ROOT, bench, bytesio_to_tensor, decode, iterate_one_epoch, args
 from dataset_helpers import make_dp, make_ffcv_dataloader
 from bench_transforms import ClassificationPresetTrain
 from bench_data_reading_decoding import pickle_decoded_dp, torch_decoded_dp
 
 
 ffcv_encoded_transforms = make_ffcv_dataloader(root=ARCHIVE_ROOT, transforms=True, encoded=True)
-ffcv_decoded_transforms = make_ffcv_dataloader(root=ARCHIVE_ROOT, transforms=True, encoded=False)
 ffcv_encoded_transforms_torchvision = make_ffcv_dataloader(root=ARCHIVE_ROOT, transforms="vision", encoded=True)
-ffcv_decoded_transforms_torchvision = make_ffcv_dataloader(root=ARCHIVE_ROOT, transforms="vision", encoded=False)
+
+if args.tiny:
+    ffcv_decoded_transforms = make_ffcv_dataloader(root=ARCHIVE_ROOT, transforms=True, encoded=False)
+    ffcv_decoded_transforms_torchvision = make_ffcv_dataloader(root=ARCHIVE_ROOT, transforms="vision", encoded=False)
 
 
 def tensor_loader(path):
@@ -59,11 +61,12 @@ bench( iterate_one_epoch, inp=no_archive_dp_transforms_pil, unit="m")
 print("File-based DP -> decode_jpeg() -> Transforms")
 bench( iterate_one_epoch, inp=no_archive_dp_transforms_tensor, unit="m")
 
-print("pickle pre-decoded -> Transforms()")
-bench( iterate_one_epoch, inp=pickle_decoded_dp.map(ClassificationPresetTrain(on="tensor")), unit="m")
+if args.tiny:
+    print("pickle pre-decoded -> Transforms()")
+    bench( iterate_one_epoch, inp=pickle_decoded_dp.map(ClassificationPresetTrain(on="tensor")), unit="m")
 
-print("torch pre-decoded -> Transforms()")
-bench(iterate_one_epoch, inp=torch_decoded_dp.map(ClassificationPresetTrain(on="tensor")), unit="m")
+    print("torch pre-decoded -> Transforms()")
+    bench(iterate_one_epoch, inp=torch_decoded_dp.map(ClassificationPresetTrain(on="tensor")), unit="m")
 
-print("FFCV loading (pre-decoded) + transforms")
-bench(iterate_one_epoch, inp=ffcv_decoded_transforms, unit="m")
+    print("FFCV loading (pre-decoded) + transforms")
+    bench(iterate_one_epoch, inp=ffcv_decoded_transforms, unit="m")

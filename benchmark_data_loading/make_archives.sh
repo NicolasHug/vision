@@ -5,7 +5,7 @@ output_dir=/ontap_isolated/nicolashug/imagenet_full_size/061417/archives/train
 
 for archiver in "torch" "pickle"
 do
-    for archive_content in "tensor" "bytesio"
+    for archive_content in "tensor" "bytesio" "decoded"
     do
         python make_archives.py --input-dir $input_dir --output-dir $output_dir --archiver $archiver --archive-content $archive_content --archive-size $archive_size
     done

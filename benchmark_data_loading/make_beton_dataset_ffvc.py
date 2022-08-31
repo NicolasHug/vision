@@ -11,11 +11,11 @@ ds = ImageFolder(root)
 
 # write_path = "/data/home/nicolashug/cluster/work/downloads/imagenet_train_jpg.beton"
 # write_path = "/fsx_isolated/nicolashug/tinyimagenet/081318/archives/train/ffcv_decoded.beton"
-write_path = "/ontap_isolated/nicolashug/imagenet_full_size/061417/archives/train/ffcv.beton"
+write_path = "/ontap_isolated/nicolashug/imagenet_full_size/061417/archives/train/ffcv_decoded.beton"
 writer = DatasetWriter(
     write_path,
     {
-        "img": RGBImageField(write_mode="jpg"),
+        "img": RGBImageField(write_mode="raw"),
         "label": IntField(),
     },
     num_workers=24,

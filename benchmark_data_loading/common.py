@@ -57,7 +57,8 @@ def bench(f, inp, num_exp=3, warmup=1, unit="μ", num_images_per_call=DATASET_SI
 
 def iterate_one_epoch(obj):
     if isinstance(obj, (torch.utils.data.datapipes.datapipe.IterDataPipe, FFCVLoader)):
-        list(obj)
+        for _ in obj:
+            pass
     else:
         # Need to reproduce "random" access
         indices = torch.randperm(len(obj))
