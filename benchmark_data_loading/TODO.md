@@ -1,7 +1,3 @@
-- Philip:
-  - Add support for data-loaders. For DPs we mostly care about DataLoader2 (https://github.com/pytorch/vision/pull/6196/files#diff-32b42103e815b96c670a0b5f0db055fe63f10fc8776ccbb6aa9b61a6940abba0R201-R209)
-  - Add support for num_workers > 1 -- See note in FFCV's Loader about need for batch-size > 1
-
 - Add support for WebDataset
 
 - Add support for reading files from a thread pool.

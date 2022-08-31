@@ -1,7 +1,7 @@
 import torchvision
 
 from common import ARCHIVE_ROOT, bench, bytesio_to_tensor, iterate_one_epoch, JPEG_FILES_ROOT
-from dataset_helpers import make_dp
+from dataset_helpers import make_dp, with_DL
 
 
 def just_read_the_file(img_path):
@@ -25,38 +25,34 @@ torch_tensor_dp = make_dp(root=ARCHIVE_ROOT, archive="torch", archive_content="t
 
 if __name__ == "__main__":
 
-    # File-based
-
     print("File-based MapStyle")
-    bench(iterate_one_epoch, inp=mapstyle_ds)
+    bench(iterate_one_epoch, with_DL(mapstyle_ds))
 
     print("File-based DP")
-    bench(iterate_one_epoch, inp=no_archive_dp)
+    bench(iterate_one_epoch, with_DL(no_archive_dp))
 
-    # Archive-based
-
-    print("tar archives (WebDataset)")
-    bench(iterate_one_epoch, inp=wds_ds)
+    # print("tar archives (WebDataset)")
+    # bench(iterate_one_epoch, with_DL(wds_ds))
 
     print("tar archives")
-    bench(iterate_one_epoch, inp=tar_dp)
+    bench(iterate_one_epoch, with_DL(tar_dp))
 
     print("pickle bytesio")
-    bench(iterate_one_epoch, inp=pickle_bytesio_dp)
+    bench(iterate_one_epoch, with_DL(pickle_bytesio_dp))
 
     print("pickle bytesio->ToTensor()")
-    bench(iterate_one_epoch, inp=pickle_bytesio_dp.map(bytesio_to_tensor))
+    bench(iterate_one_epoch, with_DL(pickle_bytesio_dp.map(bytesio_to_tensor)))
 
     print("pickle tensor")
-    bench(iterate_one_epoch, inp=pickle_tensor_dp)
+    bench(iterate_one_epoch, with_DL(pickle_tensor_dp))
 
     print("torch bytesio")
-    bench(iterate_one_epoch, inp=torch_bytesio_dp)
+    bench(iterate_one_epoch, with_DL(torch_bytesio_dp))
 
     print("torch bytesio->ToTensor()")
-    bench(iterate_one_epoch, inp=torch_bytesio_dp.map(bytesio_to_tensor))
+    bench(iterate_one_epoch, with_DL(torch_bytesio_dp.map(bytesio_to_tensor)))
 
     print("torch tensor")
-    bench(iterate_one_epoch, inp=torch_tensor_dp)
+    bench(iterate_one_epoch, with_DL(torch_tensor_dp))
 
     print()

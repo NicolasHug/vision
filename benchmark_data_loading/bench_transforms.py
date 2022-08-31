@@ -2,9 +2,8 @@ import torch
 
 import torchvision.transforms as transforms
 from bench_decoding import bytesio_list, decoded_tensors
-from common import ARCHIVE_ROOT, bench, iterate_one_epoch, JPEG_FILES_ROOT
+from common import bench
 from PIL import Image
-from torchvision.io import decode_jpeg, ImageReadMode, read_file
 
 
 class ClassificationPresetTrain:

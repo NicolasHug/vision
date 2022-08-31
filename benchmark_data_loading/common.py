@@ -6,12 +6,17 @@ from time import time
 import torch
 
 from ffcv.loader import Loader as FFCVLoader
+from torch.utils import data
+from torchdata.dataloader2 import DataLoader2
+
+from torchvision.datasets import ImageFolder
 from torchvision.io import decode_jpeg, ImageReadMode
 
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--fs", default="fsx_isolated")
 parser.add_argument("--tiny", action="store_true")
+parser.add_argument("--num-workers", type=int, default=0)
 args = parser.parse_args()
 
 print(args)
@@ -56,14 +61,16 @@ def bench(f, inp, num_exp=3, warmup=1, unit="μ", num_images_per_call=DATASET_SI
 
 
 def iterate_one_epoch(obj):
-    if isinstance(obj, (torch.utils.data.datapipes.datapipe.IterDataPipe, FFCVLoader)):
+    if isinstance(obj, (data.datapipes.datapipe.IterDataPipe, FFCVLoader, data.DataLoader, DataLoader2)):
         for _ in obj:
             pass
-    else:
+    elif isinstance(obj, ImageFolder):
         # Need to reproduce "random" access
         indices = torch.randperm(len(obj))
         for i in indices:
             obj[i]
+    else:
+        raise ValueError("Ugh?")
 
 
 def decode(encoded_tensor):
