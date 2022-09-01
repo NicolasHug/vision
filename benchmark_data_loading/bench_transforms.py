@@ -6,7 +6,7 @@ from common import bench
 from PIL import Image
 
 class ToContiguous(torch.nn.Module):
-    # Can't be lambda other datapipes fail
+    # Can't be lambda otherwise datapipes fail
     def forward(self, x):
         return x.contiguous()
 
