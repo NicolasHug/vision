@@ -10,7 +10,7 @@ import webdataset as wds
 
 from common import args, DATASET_SIZE
 from ffcv.fields.basics import IntDecoder
-from ffcv.fields.decoders import RandomResizedCropRGBImageDecoder, SimpleRGBImageDecoder
+from ffcv.fields.decoders import RandomResizedCropRGBImageDecoder, SimpleRGBImageDecoder, CenterCropRGBImageDecoder
 from ffcv.loader import Loader as FFCVLoader, OrderOption
 from ffcv.pipeline.operation import Operation
 from ffcv.transforms import NormalizeImage, RandomHorizontalFlip, ToTensor, ToTorchImage
@@ -156,7 +156,12 @@ def make_ffcv_dataloader(*, root, transforms, encoded):
             ToTorchImage(),
         ]
     else:
-        img_pipeline = [SimpleRGBImageDecoder()]  # still have to decode
+        if args.tiny:
+            decoder = SimpleRGBImageDecoder()
+        else:
+            # See https://github.com/libffcv/ffcv-imagenet/blob/f134cbfff7f590954edc5c24275444b7dd2f57f6/train_imagenet.py#L265
+            decoder = CenterCropRGBImageDecoder(output_size=(224, 224), ratio=224/256)
+        img_pipeline = [decoder]
 
     return FFCVLoader(
         f"{root}/{'ffcv' if encoded else 'ffcv_decoded'}.beton",

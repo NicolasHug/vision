@@ -29,20 +29,23 @@ def decode_turbo(arr, h, w, dest):
 
 if __name__ == "__main__":
 
+    unit = "μ" if args.tiny else "m" 
     print("PIL.Image.open(bytesio).load()")
     bench(
         lambda l: [Image.open(bytesio).convert("RGB").load() for bytesio in l],
         bytesio_list,
+        unit=unit,
         num_images_per_call=len(bytesio_list),
     )
 
     print("decode_jpeg(tensor)")
-    bench(lambda l: [decode_jpeg(t, mode=ImageReadMode.RGB) for t in l], tensors, num_images_per_call=len(tensors))
+    bench(lambda l: [decode_jpeg(t, mode=ImageReadMode.RGB) for t in l], tensors, unit=unit, num_images_per_call=len(tensors))
 
     print("libffcv.imdecode - using libjpeg-turbo")
     bench(
         (lambda l: [decode_turbo(arr, h, w, dest) for (arr, (h, w), dest) in l]),
         list(zip(np_arrays, sizes, dests)),
+        unit=unit,
         num_images_per_call=len(np_arrays),
     )
     print()

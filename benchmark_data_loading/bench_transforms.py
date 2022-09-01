@@ -5,6 +5,10 @@ from bench_decoding import bytesio_list, decoded_tensors
 from common import bench
 from PIL import Image
 
+class ToContiguous(torch.nn.Module):
+    # Can't be lambda other datapipes fail
+    def forward(self, x):
+        return x.contiguous()
 
 class ClassificationPresetTrain:
     def __init__(self, *, on):
@@ -19,7 +23,7 @@ class ClassificationPresetTrain:
         trans = []
 
         if on == "tensor":
-            trans += [lambda x: x.contiguous()]
+            trans += [ToContiguous()]
 
         trans += [transforms.RandomResizedCrop(crop_size, antialias=True)]
         if hflip_prob > 0:

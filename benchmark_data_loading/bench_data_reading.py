@@ -14,7 +14,7 @@ no_archive_dp = make_dp(root=JPEG_FILES_ROOT, archive=None).map(just_read_the_fi
 
 tar_dp = make_dp(root=ARCHIVE_ROOT, archive="tar")
 
-wds_ds = make_dp(root=ARCHIVE_ROOT, archive="webdataset")
+# wds_ds = make_dp(root=ARCHIVE_ROOT, archive="webdataset")
 
 pickle_bytesio_dp = make_dp(root=ARCHIVE_ROOT, archive="pickle", archive_content="bytesio")
 pickle_tensor_dp = make_dp(root=ARCHIVE_ROOT, archive="pickle", archive_content="tensor")
