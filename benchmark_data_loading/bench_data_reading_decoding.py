@@ -9,6 +9,8 @@ if args.tiny:
     pickle_decoded_dp = make_dp(root=ARCHIVE_ROOT, archive="pickle", archive_content="decoded")
     torch_decoded_dp = make_dp(root=ARCHIVE_ROOT, archive="torch", archive_content="decoded")
     ffcv_decoded = make_ffcv_dataloader(root=ARCHIVE_ROOT, transforms=False, encoded=False)
+else:
+    pickle_decoded_dp = torch_decoded_dp = ffcv_decoded = None
 
 if __name__ == "__main__":
 
