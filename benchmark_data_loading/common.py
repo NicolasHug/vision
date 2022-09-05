@@ -62,14 +62,9 @@ def bench(f, inp, num_exp=3, warmup=1, unit="μ", num_images_per_call=DATASET_SI
 
 def iterate_one_epoch(obj):
     if isinstance(obj, (data.datapipes.datapipe.IterDataPipe, FFCVLoader, data.DataLoader, DataLoader2)):
-        i = 0
         for _ in obj:
-            i += 1
-        if i == 0:
-            raise RuntimeError("Dataset contains no samples!")
+            pass
     elif isinstance(obj, ImageFolder):
-        if len(obj) == 0:
-            raise RuntimeError("Dataset contains no samples!")
         # Need to reproduce "random" access
         indices = torch.randperm(len(obj))
         for i in indices:
