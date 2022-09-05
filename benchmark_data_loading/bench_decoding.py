@@ -8,7 +8,7 @@ from PIL import Image
 from torchvision.io import decode_jpeg, ImageReadMode, read_file
 
 torch.set_num_threads(1)
-files = list((JPEG_FILES_ROOT / ("n01629819/" if args.tiny else "n01440764/")).glob("*.JPEG"))
+files = list((JPEG_FILES_ROOT / ("n01629819/" if args.tiny else "n01440764/")).rglob("*.JPEG"))
 
 tensors = [read_file(str(filepath)) for filepath in files]
 np_arrays = [t.numpy().astype(np.uint8) for t in tensors]
