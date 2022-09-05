@@ -1,5 +1,5 @@
 from bench_data_reading import pickle_bytesio_dp, torch_bytesio_dp
-from common import ARCHIVE_ROOT, args, bench, bytesio_to_tensor, decode, iterate_one_epoch
+from common import ARCHIVE_ROOT, args, bench, bytesio_to_tensor, decode, iterate_one_epoch, suppress
 from dataset_helpers import make_dp, make_ffcv_dataloader, with_DL
 
 
@@ -14,14 +14,17 @@ else:
 
 if __name__ == "__main__":
 
-    print("pickle bytesio->ToTensor()->decode_jpeg()")
-    bench(iterate_one_epoch, inp=with_DL(pickle_bytesio_dp.map(bytesio_to_tensor).map(decode)))
+    with suppress():
+        print("pickle bytesio->ToTensor()->decode_jpeg()")
+        bench(iterate_one_epoch, inp=with_DL(pickle_bytesio_dp.map(bytesio_to_tensor).map(decode)))
 
-    print("torch bytesio->ToTensor()->decode_jpeg()")
-    bench(iterate_one_epoch, inp=with_DL(torch_bytesio_dp.map(bytesio_to_tensor).map(decode)))
+    with suppress():
+        print("torch bytesio->ToTensor()->decode_jpeg()")
+        bench(iterate_one_epoch, inp=with_DL(torch_bytesio_dp.map(bytesio_to_tensor).map(decode)))
 
-    print("FFCV loading + decoding")
-    bench(iterate_one_epoch, inp=ffcv_encoded)
+    with suppress():
+        print("FFCV loading + decoding")
+        bench(iterate_one_epoch, inp=ffcv_encoded)
 
     if args.tiny:
         print("pickle pre-decoded")

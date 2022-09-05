@@ -2,13 +2,13 @@ import io
 
 import numpy as np
 import torch
-from common import args, bench, JPEG_FILES_ROOT
+from common import args, bench, JPEG_FILES_ROOT, decode
 from ffcv import libffcv
 from PIL import Image
-from torchvision.io import decode_jpeg, ImageReadMode, read_file
+from torchvision.io import read_file
 
 torch.set_num_threads(1)
-files = list((JPEG_FILES_ROOT / ("n01629819/" if args.tiny else "n01440764/")).glob("*.JPEG"))
+files = list((JPEG_FILES_ROOT / ("n01629819/" if args.tiny else "n02492035/")).glob("*.JPEG"))
 
 tensors = [read_file(str(filepath)) for filepath in files]
 np_arrays = [t.numpy().astype(np.uint8) for t in tensors]
@@ -18,7 +18,7 @@ for filepath in files:
     with open(filepath, "rb") as f:
         bytesio_list.append(io.BytesIO(f.read()))
 
-decoded_tensors = [decode_jpeg(t, mode=ImageReadMode.RGB) for t in tensors]
+decoded_tensors = [decode(t) for t in tensors]
 sizes = [tuple(t.shape[1:]) for t in decoded_tensors]
 dests = [np.zeros(h * w * 3, dtype=np.uint8) for (h, w) in sizes]
 
@@ -39,7 +39,7 @@ if __name__ == "__main__":
     )
 
     print("decode_jpeg(tensor)")
-    bench(lambda l: [decode_jpeg(t, mode=ImageReadMode.RGB) for t in l], tensors, unit=unit, num_images_per_call=len(tensors))
+    bench(lambda l: [decode(t) for t in l], tensors, unit=unit, num_images_per_call=len(tensors))
 
     print("libffcv.imdecode - using libjpeg-turbo")
     bench(
