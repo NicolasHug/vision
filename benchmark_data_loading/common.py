@@ -2,8 +2,8 @@ import argparse
 import contextlib
 import datetime
 from pathlib import Path
-from time import time
 import traceback
+from time import perf_counter
 
 import torch
 from PIL import Image
@@ -44,9 +44,9 @@ def bench(f, inp, num_exp=3, warmup=1, unit="μ", num_images_per_call=DATASET_SI
 
     times = []
     for _ in range(num_exp):
-        start = time()
+        start = perf_counter()
         f(inp)
-        end = time()
+        end = perf_counter()
         times.append((end - start))
 
     mul = {"μ": 1e6, "m": 1e3, "s": 1}[unit]

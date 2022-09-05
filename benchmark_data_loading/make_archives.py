@@ -7,18 +7,29 @@ from pathlib import Path
 
 import torch
 import torchvision
+from ffcv.fields import IntField, RGBImageField
+from ffcv.writer import DatasetWriter
+from torchvision.datasets.folder import default_loader, ImageFolder
 from tqdm import tqdm
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--input-dir", default="/datasets01_ontap/tinyimagenet/081318/train/")
-parser.add_argument("--output-dir", default="./tinyimagenet/081318/train")
-parser.add_argument("--archiver", default="pickle", help="pickle or tar or torch")
+parser.add_argument("--output-path", default="./tinyimagenet/081318/train")
+parser.add_argument("--archiver", default="pickle", help="pickle or tar or torch or ffcv")
 parser.add_argument(
     "--archive-content",
     default="BytesIo",
-    help="BytesIO or tensor or decoded. Only valid for pickle or torch archivers.",
+    help=(
+        "BytesIO or tensor or decoded. Only valid for pickle or torch archivers. "
+        "However, decoded is also valid for ffcv archiver."
+    ),
 )
-parser.add_argument("--archive-size", type=int, default=500, help="Number of samples per archive")
+parser.add_argument(
+    "--archive-size",
+    type=int,
+    default=500,
+    help="Number of samples per archive. Not applicable for --archiver=ffcv",
+)
 parser.add_argument("--shuffle", type=bool, default=True, help="Whether to shuffle the samples within each archive")
 
 # The archive parameter determines whether we use `tar.add`, `pickle.dump` or
@@ -42,7 +53,7 @@ class Archiver:
     def __init__(
         self,
         input_dir,
-        output_dir,
+        output_path,
         archiver="pickle",
         archive_content="BytesIO",
         archive_size=500,
@@ -54,8 +65,9 @@ class Archiver:
         self.archive_size = archive_size
         self.shuffle = shuffle
 
-        self.output_dir = Path(output_dir).resolve()
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.output_path = Path(output_path).resolve()
+        if self.output_path.is_dir():
+            self.output_path.mkdir(parents=True, exist_ok=True)
 
     def archive_dataset(self):
         def loader(path):
@@ -63,7 +75,13 @@ class Archiver:
             # This means the dataset will always return (path_to_image_file, int_label)
             return path
 
-        dataset = torchvision.datasets.ImageFolder(self.input_dir, loader=loader)
+        ffcv = self.archiver == "ffcv"
+
+        dataset = ImageFolder(self.input_dir, loader=default_loader if ffcv else loader)
+
+        if ffcv:
+            return self._make_ffcv_dataset(dataset)
+
         self.num_samples = len(dataset)
 
         if self.shuffle:
@@ -76,11 +94,20 @@ class Archiver:
             archive_samples.append(dataset[idx])
             if ((i + 1) % self.archive_size == 0) or (i == len(self.indices) - 1):
                 archive_path = self._get_archive_path(archive_samples, last_idx=i)
-                {"pickle": self._save_pickle, "torch": self._save_torch, "tar": self._save_tar,}[
-                    self.archiver
-                ](archive_samples, archive_path)
+                {"pickle": self._save_pickle, "torch": self._save_torch, "tar": self._save_tar}[self.archiver](
+                    archive_samples, archive_path
+                )
 
                 archive_samples = []
+
+    def _make_ffcv_dataset(self, dataset):
+        DatasetWriter(
+            str(self.output_path),
+            {
+                "img": RGBImageField(write_mode="raw" if self.archive_content == "decoded" else "jpg"),
+                "label": IntField(),
+            },
+        ).from_indexed_dataset(dataset, shuffle_indices=self.shuffle)
 
     def _get_archive_path(self, samples, last_idx):
         current_archive_number = last_idx // self.archive_size
@@ -134,7 +161,7 @@ class Archiver:
 args = parser.parse_args()
 Archiver(
     input_dir=args.input_dir,
-    output_dir=args.output_dir,
+    output_path=args.output_path,
     archiver=args.archiver,
     archive_content=args.archive_content,
     shuffle=args.shuffle,
