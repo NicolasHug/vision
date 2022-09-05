@@ -1,19 +1,19 @@
 import argparse
 import contextlib
 import datetime
-from pathlib import Path
 import traceback
+from pathlib import Path
 from time import perf_counter
 
 import torch
-from PIL import Image
 
 from ffcv.loader import Loader as FFCVLoader
+from PIL import Image
 from torch.utils import data
 from torchdata.dataloader2 import DataLoader2
+from torchvision import transforms
 
 from torchvision.datasets import ImageFolder
-from torchvision import transforms
 from torchvision.io import decode_jpeg, ImageReadMode
 
 
@@ -88,7 +88,6 @@ def decode(encoded_tensor):
         return transforms.PILToTensor()(Image.fromarray(encoded_tensor.numpy()).convert("RGB"))
 
 
-
 def bytesio_to_tensor(bytesio):
     return torch.frombuffer(bytesio.getbuffer(), dtype=torch.uint8)
 
@@ -97,6 +96,7 @@ class suppress(contextlib.AbstractContextManager):
     # Like contextlib.suppress(Exception), but prints the exception as well
     def __enter__(self):
         pass
+
     def __exit__(self, exctype, excinst, exctb):
         if exctype is not None:
             print("This raised the following exception:")

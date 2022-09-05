@@ -2,7 +2,7 @@ import io
 
 import numpy as np
 import torch
-from common import args, bench, JPEG_FILES_ROOT, decode
+from common import args, bench, decode, JPEG_FILES_ROOT
 from ffcv import libffcv
 from PIL import Image
 from torchvision.io import read_file
@@ -29,7 +29,7 @@ def decode_turbo(arr, h, w, dest):
 
 if __name__ == "__main__":
 
-    unit = "μ" if args.tiny else "m" 
+    unit = "μ" if args.tiny else "m"
     print("PIL.Image.open(bytesio).load()")
     bench(
         lambda l: [Image.open(bytesio).convert("RGB").load() for bytesio in l],
