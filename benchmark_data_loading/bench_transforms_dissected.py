@@ -9,15 +9,18 @@ from PIL import Image
 
 # TODO: move that stuff in the bench_transforms.py file
 
+
 class ToContiguous(torch.nn.Module):
     # Can't be lambda otherwise datapipes fail
     def forward(self, x):
         return x.contiguous()
 
+
 class RandomCrop(transforms.RandomResizedCrop):
     def forward(self, img):
         i, j, h, w = self.get_params(img, self.scale, self.ratio)
         return transforms.functional.crop(img, i, j, h, w)
+
 
 class ClassificationPresetTrain:
     def __init__(self, *, on):
@@ -36,7 +39,7 @@ class ClassificationPresetTrain:
 
         trans += [
             RandomCrop(size=(1, 1)),  # Note: size is ignored here
-            transforms.Resize(size=(crop_size, crop_size), antialias=True)
+            transforms.Resize(size=(crop_size, crop_size), antialias=True),
         ]
 
         if hflip_prob > 0:
@@ -65,7 +68,7 @@ for input_type in ("PIL", "Tensor"):
     else:
         tf = ClassificationPresetTrain(on="pil")
         inputs = pil_imgs
-    
+
     print(f"{input_type.upper()} TRANSFORMS")
     bench(lambda l: [tf(t) for t in l], inputs, unit="m", num_images_per_call=len(inputs))
 

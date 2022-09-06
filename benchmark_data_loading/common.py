@@ -1,13 +1,17 @@
 import argparse
+import contextlib
 import datetime
+import traceback
 from pathlib import Path
 from time import perf_counter
 
 import torch
 
 from ffcv.loader import Loader as FFCVLoader
+from PIL import Image
 from torch.utils import data
 from torchdata.dataloader2 import DataLoader2
+from torchvision import transforms
 
 from torchvision.datasets import ImageFolder
 from torchvision.io import decode_jpeg, ImageReadMode
@@ -84,8 +88,30 @@ def iterate_one_epoch(obj):
 
 
 def decode(encoded_tensor):
-    return decode_jpeg(encoded_tensor, mode=ImageReadMode.RGB)
+    try:
+        return decode_jpeg(encoded_tensor, mode=ImageReadMode.RGB)
+    except RuntimeError:
+        # Happens in ImageNet for ~20 CYMK images that can't be decoded with decode_jpeg()
+        # Asking for forgivness is better than blahblahlblah... BTW, hard
+        # disagree on this but anyway, the addition of the try/except statement
+        # doesn't impact benchmark results significantly, so we're fine.
+        return transforms.PILToTensor()(Image.fromarray(encoded_tensor.numpy()).convert("RGB"))
 
 
 def bytesio_to_tensor(bytesio):
     return torch.frombuffer(bytesio.getbuffer(), dtype=torch.uint8)
+
+
+class suppress(contextlib.AbstractContextManager):
+    # Like contextlib.suppress(Exception), but prints the exception as well
+    def __enter__(self):
+        pass
+
+    def __exit__(self, exctype, excinst, exctb):
+        if exctype is not None:
+            print("This raised the following exception:")
+            print(exctype)
+            print(excinst)
+            traceback.print_tb(exctb)
+            print("Continuing as if nothing happened...")
+        return True

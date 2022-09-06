@@ -5,10 +5,12 @@ from bench_decoding import bytesio_list, decoded_tensors
 from common import bench
 from PIL import Image
 
+
 class ToContiguous(torch.nn.Module):
     # Can't be lambda otherwise datapipes fail
     def forward(self, x):
         return x.contiguous()
+
 
 class ClassificationPresetTrain:
     def __init__(self, *, on):
