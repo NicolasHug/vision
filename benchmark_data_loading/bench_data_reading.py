@@ -1,7 +1,7 @@
 import torchvision
 
 from common import ARCHIVE_ROOT, bench, bytesio_to_tensor, iterate_one_epoch, JPEG_FILES_ROOT
-from dataset_helpers import make_dp, make_webdataset, with_DL, with_WDL
+from dataset_helpers import make_dp, make_webdataset, with_DL
 
 
 def just_read_the_file(img_path):
@@ -35,7 +35,7 @@ if __name__ == "__main__":
     bench(iterate_one_epoch, with_DL(tar_dp))
 
     print("WebDataset (tar archives)")
-    bench(iterate_one_epoch, with_WDL(wds))
+    bench(iterate_one_epoch, with_DL(wds))
 
     print("pickle bytesio")
     bench(iterate_one_epoch, with_DL(pickle_bytesio_dp))

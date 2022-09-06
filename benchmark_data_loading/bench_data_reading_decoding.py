@@ -1,6 +1,6 @@
 from bench_data_reading import pickle_bytesio_dp, torch_bytesio_dp, wds
 from common import ARCHIVE_ROOT, args, bench, bytesio_to_tensor, decode, iterate_one_epoch, suppress
-from dataset_helpers import make_dp, make_ffcv_dataloader, with_DL, with_WDL
+from dataset_helpers import make_dp, make_ffcv_dataloader, with_DL
 
 
 ffcv_encoded = make_ffcv_dataloader(root=ARCHIVE_ROOT, transforms=False, encoded=True)
@@ -15,7 +15,7 @@ else:
 if __name__ == "__main__":
     with suppress():
         print("WDS bytesio->ToTensor()->decode_jpeg()")
-        bench(iterate_one_epoch, inp=with_WDL(wds.map(bytesio_to_tensor).map(decode)))
+        bench(iterate_one_epoch, inp=with_DL(wds.map(bytesio_to_tensor).map(decode)))
 
     with suppress():
         print("pickle bytesio->ToTensor()->decode_jpeg()")

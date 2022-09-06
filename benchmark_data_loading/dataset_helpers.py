@@ -117,28 +117,10 @@ def make_dp(*, root, archive=None, archive_content=None, archive_size=500):
 
 
 def make_webdataset(*, root, archive_size=500):
-    # Don't use this without `with_WDL`, because the dataset is only shuffled there
+    # Don't use this without `with_DL`, because the dataset is only shuffled there
     archives = Path(root).glob(f"archive_{archive_size}*.tar")
     archives = [str(a) for a in archives]
     return wds.WebDataset(archives).map(lambda sample: io.BytesIO(sample["jpeg"]))
-
-
-def with_WDL(web_dataset):
-    if args.num_workers == 0:
-        return web_dataset.shuffle(INFINITE_BUFFER_SIZE, initial=INFINITE_BUFFER_SIZE)
-
-    return (
-        wds.WebLoader(
-            web_dataset,
-            batch_size=None,
-            num_workers=args.num_workers,
-        )
-        .shuffle(INFINITE_BUFFER_SIZE, initial=INFINITE_BUFFER_SIZE)
-        .batched(
-            batchsize=32 if args.num_workers > 0 else 1,
-            collation_fn=lambda batch: batch,
-        )
-    )
 
 
 def make_ffcv_dataloader(*, root, transforms, encoded):
@@ -203,6 +185,8 @@ def with_DL(obj):
     # Wrap obj in a data-loader iff --num-workers > 0
 
     if args.num_workers == 0:
+        if isinstance(obj, wds.WebDataset):
+            obj = obj.shuffle(INFINITE_BUFFER_SIZE, initial=INFINITE_BUFFER_SIZE)
         return obj
 
     if isinstance(obj, torch.utils.data.datapipes.datapipe.IterDataPipe):
@@ -211,8 +195,20 @@ def with_DL(obj):
             datapipe_adapter_fn=adapter.Shuffle(),
             reading_service=MultiProcessingReadingService(num_workers=args.num_workers),
         )
-
-    if isinstance(obj, ImageFolder):
+    elif isinstance(obj, ImageFolder):
         return data.DataLoader(obj, batch_size=1, collate_fn=lambda x: x, num_workers=args.num_workers, shuffle=True)
+    elif isinstance(obj, wds.WebDataset):
+        return (
+            wds.WebLoader(
+                obj,
+                batch_size=None,
+                num_workers=args.num_workers,
+            )
+            .shuffle(INFINITE_BUFFER_SIZE, initial=INFINITE_BUFFER_SIZE)
+            .batched(
+                batchsize=1,
+                collation_fn=lambda batch: batch,
+            )
+        )
 
     raise ValueError("You shouldn't be here")
