@@ -1,3 +1,5 @@
+import io
+import os
 import pickle
 from pathlib import Path
 from typing import List
@@ -8,9 +10,9 @@ import torch
 import torchvision.transforms as T
 import webdataset as wds
 
-from common import args, DATASET_SIZE
+from common import args, bytesio_to_tensor, DATASET_SIZE, decode
 from ffcv.fields.basics import IntDecoder
-from ffcv.fields.decoders import RandomResizedCropRGBImageDecoder, SimpleRGBImageDecoder, CenterCropRGBImageDecoder
+from ffcv.fields.decoders import CenterCropRGBImageDecoder, RandomResizedCropRGBImageDecoder, SimpleRGBImageDecoder
 from ffcv.loader import Loader as FFCVLoader, OrderOption
 from ffcv.pipeline.operation import Operation
 from ffcv.transforms import NormalizeImage, RandomHorizontalFlip, ToTensor, ToTorchImage
@@ -90,7 +92,6 @@ def _read_tar_entry(data):
 
 
 def _make_dp_from_tars(*, root, archive_size):
-
     dp = FileLister(str(root), masks=[f"archive_{archive_size}*.tar"])
     dp = dp.shuffle(buffer_size=INFINITE_BUFFER_SIZE)  # inter-archive shuffling
     dp = FileOpener(dp, mode="b")
@@ -102,12 +103,6 @@ def _make_dp_from_tars(*, root, archive_size):
     return dp
 
 
-def _make_webdataset(*, root, archive_size):
-    archives = Path(root).glob(f"archive_{archive_size}*.tar")
-    archives = [str(a) for a in archives]
-    return wds.WebDataset(archives)  # This will read and load the data as bytes
-
-
 def make_dp(*, root, archive=None, archive_content=None, archive_size=500):
     if archive in ("pickle", "torch"):
         dp = _make_dp_from_archive(
@@ -115,13 +110,42 @@ def make_dp(*, root, archive=None, archive_content=None, archive_size=500):
         )
     elif archive == "tar":
         dp = _make_dp_from_tars(root=root, archive_size=archive_size)
-    elif archive == "webdataset":
-        dp = _make_webdataset(root=root, archive_size=archive_size)
     else:
         dp = _make_dp_from_image_folder(root=root)
 
     dp = LenSetter(dp)
     return dp
+
+
+def make_webdataset_dataloader(*, root, encoded=True, archive_size=500):
+    def preprocess(sample):
+        encoded_image = bytesio_to_tensor(io.BytesIO(sample["jpeg"]))
+        label = int(str(sample["__key__"].split(os.sep)[0]))
+        return encoded_image, label
+
+    archives = Path(root).glob(f"archive_{archive_size}*.tar")
+    archives = [str(a) for a in archives]
+
+    dataset = wds.WebDataset(archives).map(preprocess)
+
+    if not encoded:
+        dataset = dataset.map_tuple(decode, None)
+
+    if args.num_workers == 0:
+        return dataset.shuffle(INFINITE_BUFFER_SIZE, initial=INFINITE_BUFFER_SIZE)
+
+    return (
+        wds.WebLoader(
+            dataset,
+            batch_size=None,
+            num_workers=args.num_workers,
+        )
+        .shuffle(INFINITE_BUFFER_SIZE, initial=INFINITE_BUFFER_SIZE)
+        .batched(
+            batchsize=32 if args.num_workers > 0 else 1,
+            collation_fn=lambda batch: batch if encoded else wds.filters.default_collation_fn,
+        )
+    )
 
 
 def make_ffcv_dataloader(*, root, transforms, encoded):
@@ -160,7 +184,7 @@ def make_ffcv_dataloader(*, root, transforms, encoded):
             decoder = SimpleRGBImageDecoder()
         else:
             # See https://github.com/libffcv/ffcv-imagenet/blob/f134cbfff7f590954edc5c24275444b7dd2f57f6/train_imagenet.py#L265
-            decoder = CenterCropRGBImageDecoder(output_size=(224, 224), ratio=224/256)
+            decoder = CenterCropRGBImageDecoder(output_size=(224, 224), ratio=224 / 256)
         img_pipeline = [decoder]
 
     return FFCVLoader(

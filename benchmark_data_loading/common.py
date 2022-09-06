@@ -61,7 +61,17 @@ def bench(f, inp, num_exp=3, warmup=1, unit="μ", num_images_per_call=DATASET_SI
 
 
 def iterate_one_epoch(obj):
-    if isinstance(obj, (data.datapipes.datapipe.IterDataPipe, FFCVLoader, data.DataLoader, DataLoader2)):
+    if isinstance(
+        obj,
+        (
+            data.datapipes.datapipe.IterDataPipe,
+            FFCVLoader,
+            data.DataLoader,
+            DataLoader2,
+            wds.WebLoader,
+            wds.WebDataset,
+        ),
+    ):
         for _ in obj:
             pass
     elif isinstance(obj, ImageFolder):
