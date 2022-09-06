@@ -92,16 +92,12 @@ def bytesio_to_tensor(bytesio):
     return torch.frombuffer(bytesio.getbuffer(), dtype=torch.uint8)
 
 
-class suppress(contextlib.AbstractContextManager):
+@contextlib.contextmanager
+def suppress():
     # Like contextlib.suppress(Exception), but prints the exception as well
-    def __enter__(self):
-        pass
-
-    def __exit__(self, exctype, excinst, exctb):
-        if exctype is not None:
-            print("This raised the following exception:")
-            print(exctype)
-            print(excinst)
-            traceback.print_tb(exctb)
-            print("Continuing as if nothing happened...")
-        return True
+    try:
+        yield
+    except Exception as exc:
+        print("This raised the following exception:")
+        traceback.print_exception(type(exc), exc, exc.__traceback__)
+        print("Continuing as if nothing happened...")
