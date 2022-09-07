@@ -69,7 +69,7 @@ def bench(f, inp, num_exp=3, warmup=1, unit="μ", num_images_per_call=None):
 
 
 def iterate_one_epoch(obj):
-    if isinstance(obj, (data.datapipes.datapipe.IterDataPipe, FFCVLoader, data.DataLoader, DataLoader2)):
+    if isinstance(obj, (data.datapipes.datapipe.IterDataPipe, data.DataLoader, DataLoader2)):
         for _ in obj:
             pass
     elif isinstance(obj, ImageFolder):
@@ -77,6 +77,15 @@ def iterate_one_epoch(obj):
         indices = torch.randperm(len(obj))
         for i in indices:
             obj[i]
+    elif isinstance(obj, FFCVLoader):
+        if args.limit is not None:
+            limit = args.limit // obj.batch_size
+        else:
+            limit = len(obj)
+        i = 0
+        for i, _ in enumerate(obj):
+            if i == limit:
+                break
     else:
         raise ValueError("Ugh?")
 

@@ -196,20 +196,16 @@ def make_ffcv_dataloader(*, root, transforms, encoded):
             decoder = CenterCropRGBImageDecoder(output_size=(224, 224), ratio=224 / 256)
         img_pipeline = [decoder]
 
-    indices = np.arange(args.limit) if args.limit is not None else None
-
+    # Note: args.limit is taken care of in iterate_over_epoch()
     return FFCVLoader(
         f"{root}/{'ffcv' if encoded else 'ffcv_decoded'}.beton",
         # Note: most of FFCV //ism is batch-wise, so when setting num_workers > 1
         # it's best to also set higher batch-size (>= num_workers)
-        # For fairer comparison, maybe also set the same batch-size in
-        # DataLoader[2] when doing this?
-        batch_size=32 if args.num_workers > 0 else 1,
+        batch_size=16 if args.num_workers > 0 else 1,
         drop_last=False,
-        num_workers=min(args.num_workers, 1),
+        num_workers=max(args.num_workers, 1),
         os_cache=False,  # Because otherwise the entire dataset is stored in RAM
         order=OrderOption.QUASI_RANDOM,
-        indices=indices,
         pipelines={
             "img": img_pipeline,
             "label": [IntDecoder()],
@@ -224,7 +220,10 @@ def with_DL(obj):
     if args.num_workers == 0:
         return obj
 
+    batch_size = 16 if args.num_workers > 0 else 1
+
     if isinstance(obj, torch.utils.data.datapipes.datapipe.IterDataPipe):
+        obj.batch(batch_size=batch_size)
         return DataLoader2(
             obj,
             datapipe_adapter_fn=adapter.Shuffle(),
@@ -232,6 +231,8 @@ def with_DL(obj):
         )
 
     if isinstance(obj, ImageFolder):
-        return data.DataLoader(obj, batch_size=1, collate_fn=lambda x: x, num_workers=args.num_workers, shuffle=True)
+        return data.DataLoader(
+            obj, batch_size=batch_size, collate_fn=lambda x: x, num_workers=args.num_workers, shuffle=True
+        )
 
     raise ValueError("You shouldn't be here")
