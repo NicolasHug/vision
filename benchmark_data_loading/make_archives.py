@@ -117,7 +117,7 @@ class Archiver:
 
         archive_content_str = "" if self.archiver == "tar" else f"{self.archive_content}_"
         path = (
-            self.output_dir
+            self.output_path
             / f"archive_{self.archive_size}_{archive_content_str}{current_archive_number:0{zero_pad_fmt}d}"
         )
         print(f"Archiving {num_samples_in_archive} samples in {path}")
