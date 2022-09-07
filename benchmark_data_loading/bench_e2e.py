@@ -1,10 +1,8 @@
-import torchvision
-
 from bench_data_reading import pickle_bytesio_dp, torch_bytesio_dp
 from bench_data_reading_decoding import pickle_decoded_dp, torch_decoded_dp
 from bench_transforms import ClassificationPresetTrain
 from common import ARCHIVE_ROOT, args, bench, bytesio_to_tensor, decode, iterate_one_epoch, JPEG_FILES_ROOT, suppress
-from dataset_helpers import make_dp, make_ffcv_dataloader, with_DL
+from dataset_helpers import make_dp, make_ffcv_dataloader, make_mapstyle, with_DL
 from PIL import Image
 from torchvision.io import read_file
 
@@ -24,11 +22,9 @@ def pil_loader(path):
     return Image.open(path).convert("RGB")
 
 
-mapstyle_ds_transforms_pil = torchvision.datasets.ImageFolder(
-    JPEG_FILES_ROOT, transform=ClassificationPresetTrain(on="pil")
-)
-mapstyle_ds_transforms_tensor = torchvision.datasets.ImageFolder(
-    JPEG_FILES_ROOT, loader=tensor_loader, transform=ClassificationPresetTrain(on="tensor")
+mapstyle_ds_transforms_pil = make_mapstyle(root=JPEG_FILES_ROOT, transform=ClassificationPresetTrain(on="pil"))
+mapstyle_ds_transforms_tensor = make_mapstyle(
+    root=JPEG_FILES_ROOT, loader=tensor_loader, transform=ClassificationPresetTrain(on="tensor")
 )
 no_archive_dp_transforms_pil = (
     make_dp(root=JPEG_FILES_ROOT, archive=None).map(pil_loader).map(ClassificationPresetTrain(on="pil"))

@@ -21,6 +21,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--fs", default="fsx_isolated")
 parser.add_argument("--tiny", action="store_true")
 parser.add_argument("--num-workers", type=int, default=0)
+parser.add_argument("--limit", type=int, default=None, help="Load at most `limit` samples")
 args = parser.parse_args()
 
 print(args)
@@ -37,7 +38,10 @@ DATASET_SIZE = 100_000 if args.tiny else 1_281_167
 torch.set_num_threads(1)
 
 
-def bench(f, inp, num_exp=3, warmup=1, unit="μ", num_images_per_call=DATASET_SIZE):
+def bench(f, inp, num_exp=3, warmup=1, unit="μ", num_images_per_call=None):
+    if num_images_per_call is None:
+        num_images_per_call = args.limit or DATASET_SIZE
+
     # Computes PER IMAGE median times
     for _ in range(warmup):
         f(inp)

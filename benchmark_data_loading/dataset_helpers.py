@@ -1,4 +1,5 @@
 import pickle
+import warnings
 from pathlib import Path
 from typing import List
 
@@ -16,7 +17,7 @@ from ffcv.pipeline.operation import Operation
 from ffcv.transforms import NormalizeImage, RandomHorizontalFlip, ToTensor, ToTorchImage
 from torch.utils import data
 from torchdata.dataloader2 import adapter, DataLoader2, MultiProcessingReadingService
-from torchdata.datapipes.iter import FileLister, FileOpener, IterDataPipe, TarArchiveLoader
+from torchdata.datapipes.iter import FileLister, FileOpener, Header, IterDataPipe, TarArchiveLoader
 from torchvision.datasets import ImageFolder
 
 
@@ -24,7 +25,7 @@ from torchvision.datasets import ImageFolder
 INFINITE_BUFFER_SIZE = 1_000_000_000
 
 
-class LenSetter(IterDataPipe):
+class LenSetter(IterDataPipe):  # TODO: Not sure how much this is needed
     def __init__(self, dp):
         self.dp = dp
 
@@ -32,7 +33,7 @@ class LenSetter(IterDataPipe):
         yield from self.dp
 
     def __len__(self):
-        return DATASET_SIZE
+        return args.limit or DATASET_SIZE
 
 
 class ArchiveLoader(IterDataPipe):
@@ -58,6 +59,8 @@ class ConcaterIterable(IterDataPipe):
 
 def _make_dp_from_image_folder(*, root):
     dp = FileLister(str(root), recursive=True, masks=["*.JPEG"])
+    if args.limit:
+        dp = Header(dp, limit=args.limit)
     dp = dp.shuffle(buffer_size=INFINITE_BUFFER_SIZE).sharding_filter()
     return dp
 
@@ -67,9 +70,11 @@ def _drop_label(data):
     return img_data
 
 
-def _make_dp_from_archive(*, root, archive, archive_content, archive_size):
+def _make_dp_from_archive(*, root, archive, archive_content, archive_size, num_archives=None):
     ext = "pt" if archive == "torch" else "pkl"
     dp = FileLister(str(root), masks=[f"archive_{archive_size}*{archive_content}*.{ext}"])
+    if num_archives is not None:
+        dp = Header(dp, limit=num_archives)
     dp = dp.shuffle(buffer_size=INFINITE_BUFFER_SIZE)  # inter-archive shuffling
     dp = ArchiveLoader(dp, loader=archive)
     dp = ConcaterIterable(dp)
@@ -89,9 +94,11 @@ def _read_tar_entry(data):
     return io_stream.read()
 
 
-def _make_dp_from_tars(*, root, archive_size):
+def _make_dp_from_tars(*, root, archive_size, num_archives=None):
 
     dp = FileLister(str(root), masks=[f"archive_{archive_size}*.tar"])
+    if num_archives is not None:
+        dp = Header(dp, limit=num_archives)
     dp = dp.shuffle(buffer_size=INFINITE_BUFFER_SIZE)  # inter-archive shuffling
     dp = FileOpener(dp, mode="b")
     dp = TarArchiveLoader(dp, mode="r:")
@@ -102,26 +109,52 @@ def _make_dp_from_tars(*, root, archive_size):
     return dp
 
 
-def _make_webdataset(*, root, archive_size):
+def _make_webdataset(*, root, archive_size, num_archives):
     archives = Path(root).glob(f"archive_{archive_size}*.tar")
     archives = [str(a) for a in archives]
+    if num_archives is not None:
+        archives = archives[:num_archives]
     return wds.WebDataset(archives)  # This will read and load the data as bytes
 
 
 def make_dp(*, root, archive=None, archive_content=None, archive_size=500):
+    if args.limit is not None:
+        num_archives = args.limit // archive_size
+        if args.limit % archive_size != 0:
+            warnings.warn(
+                f"Requested limit={args.limit} samples but archive size is {archive_size}. You'll get {num_archives} samples."
+            )
+    else:
+        num_archives = None
+
     if archive in ("pickle", "torch"):
         dp = _make_dp_from_archive(
-            root=root, archive=archive, archive_content=archive_content, archive_size=archive_size
+            root=root,
+            archive=archive,
+            archive_content=archive_content,
+            archive_size=archive_size,
+            num_archives=num_archives,
         )
     elif archive == "tar":
-        dp = _make_dp_from_tars(root=root, archive_size=archive_size)
+        dp = _make_dp_from_tars(root=root, archive_size=archive_size, num_archives=num_archives)
     elif archive == "webdataset":
-        dp = _make_webdataset(root=root, archive_size=archive_size)
+        dp = _make_webdataset(root=root, archive_size=archive_size, num_archives=num_archives)
     else:
         dp = _make_dp_from_image_folder(root=root)
 
     dp = LenSetter(dp)
     return dp
+
+
+def make_mapstyle(*argz, **kwargs):
+    mapstyle = ImageFolder(*argz, **kwargs)
+    if args.limit is not None:
+        # Note: all files are still `ls`ed above, even if we discard some here
+        mapstyle.samples = mapstyle.samples[: args.limit]
+        mapstyle.targets = mapstyle.targets[: args.limit]
+        mapstyle.imgs = mapstyle.imgs[: args.limit]
+
+    return mapstyle
 
 
 def make_ffcv_dataloader(*, root, transforms, encoded):
@@ -163,6 +196,8 @@ def make_ffcv_dataloader(*, root, transforms, encoded):
             decoder = CenterCropRGBImageDecoder(output_size=(224, 224), ratio=224 / 256)
         img_pipeline = [decoder]
 
+    indices = np.arange(args.limit) if args.limit is not None else None
+
     return FFCVLoader(
         f"{root}/{'ffcv' if encoded else 'ffcv_decoded'}.beton",
         # Note: most of FFCV //ism is batch-wise, so when setting num_workers > 1
@@ -174,6 +209,7 @@ def make_ffcv_dataloader(*, root, transforms, encoded):
         num_workers=min(args.num_workers, 1),
         os_cache=False,  # Because otherwise the entire dataset is stored in RAM
         order=OrderOption.QUASI_RANDOM,
+        indices=indices,
         pipelines={
             "img": img_pipeline,
             "label": [IntDecoder()],

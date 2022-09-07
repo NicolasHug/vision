@@ -30,13 +30,12 @@ do
         fi
     fi
 
-    # for script in "bench_data_reading.py" "bench_data_reading_decoding.py" "bench_e2e.py"
     for script in "bench_e2e.py" "bench_data_reading_decoding.py" "bench_data_reading.py"
     do
         for num_workers in 0 12
         do
             # echo $script $fs $num_workers
-            python $script --fs $fs --num-workers $num_workers $tiny
+            python $script --fs $fs --num-workers $num_workers $tiny --limit 12000
         done
     done
 done
