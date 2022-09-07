@@ -117,10 +117,14 @@ def make_dp(*, root, archive=None, archive_content=None, archive_size=500):
 
 
 def make_webdataset(*, root, archive_size=500):
-    # Don't use this without `with_DL`, because the dataset is only shuffled there
+    # Don't use this without `with_DL`, because the intra-archive shuffling only happens there
     archives = Path(root).glob(f"archive_{archive_size}*.tar")
     archives = [str(a) for a in archives]
-    return wds.WebDataset(archives).map(lambda sample: io.BytesIO(sample["jpeg"]))
+    return (
+        wds.WebDataset(archives)
+        .shuffle(len(archives), initial=len(archives))  # inter-archive shuffling
+        .map(lambda sample: io.BytesIO(sample["jpeg"]))
+    )
 
 
 def make_ffcv_dataloader(*, root, transforms, encoded):
@@ -181,12 +185,22 @@ def make_ffcv_dataloader(*, root, transforms, encoded):
     )
 
 
+def _extract_wds_archive_size(web_dataset):
+    # This function is a crutch since we need to know the archive_size for intra-archive shuffling, but this is not
+    # available in with_DL.
+    archive_paths = web_dataset.pipeline[0].urls
+    archive_name = Path(archive_paths[0]).name
+    return int(archive_name.split("_")[1])
+
+
 def with_DL(obj):
+    wds_archive_size = _extract_wds_archive_size(obj) if isinstance(obj, wds.WebDataset) else None
+
     # Wrap obj in a data-loader iff --num-workers > 0
 
     if args.num_workers == 0:
         if isinstance(obj, wds.WebDataset):
-            obj = obj.shuffle(INFINITE_BUFFER_SIZE, initial=INFINITE_BUFFER_SIZE)
+            obj = obj.shuffle(wds_archive_size, initial=wds_archive_size)  # intra-archive shuffling
         return obj
 
     if isinstance(obj, torch.utils.data.datapipes.datapipe.IterDataPipe):
@@ -204,7 +218,7 @@ def with_DL(obj):
                 batch_size=None,
                 num_workers=args.num_workers,
             )
-            .shuffle(INFINITE_BUFFER_SIZE, initial=INFINITE_BUFFER_SIZE)
+            .shuffle(wds_archive_size, initial=wds_archive_size)  # intra-archive shuffling
             .batched(
                 batchsize=1,
                 collation_fn=lambda batch: batch,
