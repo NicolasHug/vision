@@ -264,7 +264,7 @@ def with_DL(obj):
             )
             .shuffle(wds_archive_size, initial=wds_archive_size)  # intra-archive shuffling
             .batched(
-                batchsize=1,
+                batchsize=batch_size,
                 collation_fn=lambda batch: batch,
             )
         )
