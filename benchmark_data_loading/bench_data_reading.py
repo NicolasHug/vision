@@ -29,11 +29,11 @@ if __name__ == "__main__":
     print("File-based DP")
     bench(iterate_one_epoch, with_DL(no_archive_dp))
 
+    print("tar archives (WebDataset)")
+    bench(iterate_one_epoch, with_DL(wds))
+
     print("tar archives")
     bench(iterate_one_epoch, with_DL(tar_dp))
-
-    print("WebDataset (tar archives)")
-    bench(iterate_one_epoch, with_DL(wds))
 
     print("pickle bytesio")
     bench(iterate_one_epoch, with_DL(pickle_bytesio_dp))

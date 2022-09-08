@@ -34,7 +34,7 @@ no_archive_dp_transforms_tensor = (
 
 if __name__ == "__main__":
     with suppress():
-        print("WDS bytesio->ToTensor()->decode_jpeg()->Transforms()")
+        print("tar archives (WebDataset) bytesio->ToTensor()->decode_jpeg()->Transforms()")
         dp = with_DL(wds.map(bytesio_to_tensor).map(decode).map(ClassificationPresetTrain(on="tensor")))
         bench(iterate_one_epoch, inp=dp, unit="m")
 

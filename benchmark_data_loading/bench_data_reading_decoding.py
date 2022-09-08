@@ -14,7 +14,7 @@ else:
 
 if __name__ == "__main__":
     with suppress():
-        print("WDS bytesio->ToTensor()->decode_jpeg()")
+        print("tar archives (WebDataset) bytesio->ToTensor()->decode_jpeg()")
         bench(iterate_one_epoch, inp=with_DL(wds.map(bytesio_to_tensor).map(decode)))
 
     with suppress():

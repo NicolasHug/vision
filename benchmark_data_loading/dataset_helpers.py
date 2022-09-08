@@ -96,6 +96,7 @@ def _read_tar_entry(data):
 
 
 def _make_dp_from_tars(*, root, archive_size, num_archives=None):
+
     dp = FileLister(str(root), masks=[f"archive_{archive_size}*.tar"])
     if num_archives is not None:
         dp = Header(dp, limit=num_archives)
@@ -251,7 +252,9 @@ def with_DL(obj):
             reading_service=MultiProcessingReadingService(num_workers=args.num_workers),
         )
     elif isinstance(obj, ImageFolder):
-        return data.DataLoader(obj, batch_size=1, collate_fn=lambda x: x, num_workers=args.num_workers, shuffle=True)
+        return data.DataLoader(
+            obj, batch_size=batch_size, collate_fn=lambda x: x, num_workers=args.num_workers, shuffle=True
+        )
     elif isinstance(obj, wds.WebDataset):
         return (
             wds.WebLoader(
