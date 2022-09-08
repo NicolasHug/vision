@@ -223,7 +223,7 @@ def with_DL(obj):
     batch_size = 16 if args.num_workers > 0 else 1
 
     if isinstance(obj, torch.utils.data.datapipes.datapipe.IterDataPipe):
-        obj.batch(batch_size=batch_size)
+        obj = obj.batch(batch_size=batch_size)
         return DataLoader2(
             obj,
             datapipe_adapter_fn=adapter.Shuffle(),

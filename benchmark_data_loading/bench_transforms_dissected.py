@@ -23,7 +23,7 @@ class RandomCrop(transforms.RandomResizedCrop):
 
 
 class ClassificationPresetTrain:
-    def __init__(self, *, on):
+    def __init__(self, *, on, autoaugment=False):
         mean = (0.485, 0.456, 0.406)
         std = (0.229, 0.224, 0.225)
         hflip_prob = 0.5
@@ -45,6 +45,11 @@ class ClassificationPresetTrain:
         if hflip_prob > 0:
             trans += [transforms.RandomHorizontalFlip(hflip_prob)]
 
+        if autoaugment:
+            trans += [
+                transforms.autoaugment.AutoAugment(policy=transforms.AutoAugmentPolicy.IMAGENET, interpolation=transforms.InterpolationMode.BILINEAR)
+            ]
+
         if on == "pil":
             trans += [transforms.PILToTensor()]
 
@@ -61,12 +66,14 @@ class ClassificationPresetTrain:
 
 pil_imgs = [Image.open(bytesio).convert("RGB") for bytesio in bytesio_list]
 
+autoaugment = True
+
 for input_type in ("PIL", "Tensor"):
     if input_type.lower() == "tensor":
-        tf = ClassificationPresetTrain(on="tensor")
+        tf = ClassificationPresetTrain(on="tensor", autoaugment=autoaugment)
         inputs = decoded_tensors
     else:
-        tf = ClassificationPresetTrain(on="pil")
+        tf = ClassificationPresetTrain(on="pil", autoaugment=autoaugment)
         inputs = pil_imgs
 
     print(f"{input_type.upper()} TRANSFORMS")
