@@ -23,6 +23,7 @@ parser.add_argument("--fs", default="fsx_isolated")
 parser.add_argument("--tiny", action="store_true")
 parser.add_argument("--num-workers", type=int, default=0)
 parser.add_argument("--limit", type=int, default=None, help="Load at most `limit` samples")
+parser.add_argument("--archive-size", type=int, default=500, help="Number of samples in each archive.")
 args = parser.parse_args()
 
 print(args)
