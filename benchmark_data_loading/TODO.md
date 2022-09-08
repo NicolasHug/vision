@@ -1,5 +1,3 @@
-- Add support for WebDataset
-
 - Add support for reading files from a thread pool.
 
 - Run similar benchmarks internally - torchdata will dedicate time for this

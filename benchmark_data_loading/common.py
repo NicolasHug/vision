@@ -6,6 +6,7 @@ from pathlib import Path
 from time import perf_counter
 
 import torch
+import webdataset as wds
 
 from ffcv.loader import Loader as FFCVLoader
 from PIL import Image
@@ -22,6 +23,7 @@ parser.add_argument("--fs", default="fsx_isolated")
 parser.add_argument("--tiny", action="store_true")
 parser.add_argument("--num-workers", type=int, default=0)
 parser.add_argument("--limit", type=int, default=None, help="Load at most `limit` samples")
+parser.add_argument("--archive-size", type=int, default=500, help="Number of samples in each archive.")
 args = parser.parse_args()
 
 print(args)
@@ -69,7 +71,16 @@ def bench(f, inp, num_exp=3, warmup=1, unit="μ", num_images_per_call=None):
 
 
 def iterate_one_epoch(obj):
-    if isinstance(obj, (data.datapipes.datapipe.IterDataPipe, data.DataLoader, DataLoader2)):
+    if isinstance(
+        obj,
+        (
+            data.datapipes.datapipe.IterDataPipe,
+            data.DataLoader,
+            DataLoader2,
+            wds.WebLoader,
+            wds.WebDataset,
+        ),
+    ):
         for _ in obj:
             pass
     elif isinstance(obj, ImageFolder):

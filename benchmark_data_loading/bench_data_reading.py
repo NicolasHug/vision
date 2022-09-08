@@ -1,7 +1,5 @@
-import torchvision
-
 from common import ARCHIVE_ROOT, bench, bytesio_to_tensor, iterate_one_epoch, JPEG_FILES_ROOT
-from dataset_helpers import make_dp, make_mapstyle, with_DL
+from dataset_helpers import make_dp, make_mapstyle, make_webdataset, with_DL
 
 
 def just_read_the_file(img_path):
@@ -14,7 +12,7 @@ no_archive_dp = make_dp(root=JPEG_FILES_ROOT, archive=None).map(just_read_the_fi
 
 tar_dp = make_dp(root=ARCHIVE_ROOT, archive="tar")
 
-# wds_ds = make_dp(root=ARCHIVE_ROOT, archive="webdataset")
+wds = make_webdataset(root=ARCHIVE_ROOT)
 
 pickle_bytesio_dp = make_dp(root=ARCHIVE_ROOT, archive="pickle", archive_content="bytesio")
 pickle_tensor_dp = make_dp(root=ARCHIVE_ROOT, archive="pickle", archive_content="tensor")
@@ -31,8 +29,8 @@ if __name__ == "__main__":
     print("File-based DP")
     bench(iterate_one_epoch, with_DL(no_archive_dp))
 
-    # print("tar archives (WebDataset)")
-    # bench(iterate_one_epoch, with_DL(wds_ds))
+    print("tar archives (WebDataset)")
+    bench(iterate_one_epoch, with_DL(wds))
 
     print("tar archives")
     bench(iterate_one_epoch, with_DL(tar_dp))

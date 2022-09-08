@@ -1,3 +1,4 @@
+import io
 import pickle
 import warnings
 from pathlib import Path
@@ -70,16 +71,16 @@ def _drop_label(data):
     return img_data
 
 
-def _make_dp_from_archive(*, root, archive, archive_content, archive_size, num_archives=None):
+def _make_dp_from_archive(*, root, archive, archive_content, num_archives=None):
     ext = "pt" if archive == "torch" else "pkl"
-    dp = FileLister(str(root), masks=[f"archive_{archive_size}*{archive_content}*.{ext}"])
+    dp = FileLister(str(root), masks=[f"archive_{args.archive_size}*{archive_content}*.{ext}"])
     if num_archives is not None:
         dp = Header(dp, limit=num_archives)
     dp = dp.shuffle(buffer_size=INFINITE_BUFFER_SIZE)  # inter-archive shuffling
     dp = ArchiveLoader(dp, loader=archive)
     dp = ConcaterIterable(dp)
     dp = dp.map(_drop_label)
-    dp = dp.shuffle(buffer_size=archive_size)  # intra-archive shuffling
+    dp = dp.shuffle(buffer_size=args.archive_size)  # intra-archive shuffling
 
     # TODO: we're sharding here but the big BytesIO or Tensors have already been
     # loaded by all workers, possibly in vain. Hopefully the new experimental MP
@@ -94,35 +95,36 @@ def _read_tar_entry(data):
     return io_stream.read()
 
 
-def _make_dp_from_tars(*, root, archive_size, num_archives=None):
+def _make_dp_from_tars(*, root, num_archives=None):
 
-    dp = FileLister(str(root), masks=[f"archive_{archive_size}*.tar"])
+    dp = FileLister(str(root), masks=[f"archive_{args.archive_size}*.tar"])
     if num_archives is not None:
         dp = Header(dp, limit=num_archives)
     dp = dp.shuffle(buffer_size=INFINITE_BUFFER_SIZE)  # inter-archive shuffling
     dp = FileOpener(dp, mode="b")
     dp = TarArchiveLoader(dp, mode="r:")
-    dp = dp.shuffle(buffer_size=archive_size)  # intra-archive shuffling
+    dp = dp.shuffle(buffer_size=args.archive_size)  # intra-archive shuffling
     dp = dp.sharding_filter()
 
     dp = dp.map(_read_tar_entry)
     return dp
 
 
-def _make_webdataset(*, root, archive_size, num_archives):
-    archives = Path(root).glob(f"archive_{archive_size}*.tar")
+def _make_webdataset(*, root, num_archives):
+    archives = Path(root).glob(f"archive_{args.archive_size}*.tar")
     archives = [str(a) for a in archives]
     if num_archives is not None:
         archives = archives[:num_archives]
     return wds.WebDataset(archives)  # This will read and load the data as bytes
 
 
-def make_dp(*, root, archive=None, archive_content=None, archive_size=500):
+def make_dp(*, root, archive=None, archive_content=None):
     if args.limit is not None:
-        num_archives = args.limit // archive_size
-        if args.limit % archive_size != 0:
+        num_archives = args.limit // args.archive_size
+        if args.limit % args.archive_size != 0:
             warnings.warn(
-                f"Requested limit={args.limit} samples but archive size is {archive_size}. You'll get {num_archives} samples."
+                f"Requested limit={args.limit} samples but archive size is {args.archive_size}. "
+                f"You'll get {num_archives} samples."
             )
     else:
         num_archives = None
@@ -132,18 +134,26 @@ def make_dp(*, root, archive=None, archive_content=None, archive_size=500):
             root=root,
             archive=archive,
             archive_content=archive_content,
-            archive_size=archive_size,
             num_archives=num_archives,
         )
     elif archive == "tar":
-        dp = _make_dp_from_tars(root=root, archive_size=archive_size, num_archives=num_archives)
-    elif archive == "webdataset":
-        dp = _make_webdataset(root=root, archive_size=archive_size, num_archives=num_archives)
+        dp = _make_dp_from_tars(root=root, num_archives=num_archives)
     else:
         dp = _make_dp_from_image_folder(root=root)
 
     dp = LenSetter(dp)
     return dp
+
+
+def make_webdataset(*, root):
+    # Don't use this without `with_DL`, because the intra-archive shuffling only happens there
+    archives = Path(root).glob(f"archive_{args.archive_size}*.tar")
+    archives = [str(a) for a in archives]
+    return (
+        wds.WebDataset(archives)
+        .shuffle(len(archives), initial=len(archives))  # inter-archive shuffling
+        .map(lambda sample: io.BytesIO(sample["jpeg"]))
+    )
 
 
 def make_mapstyle(*argz, **kwargs):
@@ -218,6 +228,8 @@ def with_DL(obj):
     # Wrap obj in a data-loader iff --num-workers > 0
 
     if args.num_workers == 0:
+        if isinstance(obj, wds.WebDataset):
+            obj = obj.shuffle(args.archive_size, initial=args.archive_size)  # intra-archive shuffling
         return obj
 
     batch_size = 16 if args.num_workers > 0 else 1
@@ -229,10 +241,22 @@ def with_DL(obj):
             datapipe_adapter_fn=adapter.Shuffle(),
             reading_service=MultiProcessingReadingService(num_workers=args.num_workers),
         )
-
-    if isinstance(obj, ImageFolder):
+    elif isinstance(obj, ImageFolder):
         return data.DataLoader(
             obj, batch_size=batch_size, collate_fn=lambda x: x, num_workers=args.num_workers, shuffle=True
+        )
+    elif isinstance(obj, wds.WebDataset):
+        return (
+            wds.WebLoader(
+                obj,
+                batch_size=None,
+                num_workers=args.num_workers,
+            )
+            .shuffle(args.archive_size, initial=args.archive_size)  # intra-archive shuffling
+            .batched(
+                batchsize=batch_size,
+                collation_fn=lambda batch: batch,
+            )
         )
 
     raise ValueError("You shouldn't be here")
