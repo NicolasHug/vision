@@ -1,7 +1,5 @@
-import torchvision
-
 from common import ARCHIVE_ROOT, bench, bytesio_to_tensor, iterate_one_epoch, JPEG_FILES_ROOT
-from dataset_helpers import make_dp, make_webdataset, with_DL
+from dataset_helpers import make_dp, make_mapstyle, make_webdataset, with_DL
 
 
 def just_read_the_file(img_path):
@@ -9,7 +7,7 @@ def just_read_the_file(img_path):
         return f.read()
 
 
-mapstyle_ds = torchvision.datasets.ImageFolder(JPEG_FILES_ROOT, loader=just_read_the_file)
+mapstyle_ds = make_mapstyle(root=JPEG_FILES_ROOT, loader=just_read_the_file)
 no_archive_dp = make_dp(root=JPEG_FILES_ROOT, archive=None).map(just_read_the_file)
 
 tar_dp = make_dp(root=ARCHIVE_ROOT, archive="tar")

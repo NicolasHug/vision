@@ -42,3 +42,10 @@ xcuserdata/
 # direnv
 .direnv
 .envrc
+
+
+*slurm*.out
+.dumbo.json
+*lol.py
+notes
+imagenet_identify
