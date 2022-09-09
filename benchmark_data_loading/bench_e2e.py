@@ -41,7 +41,12 @@ if __name__ == "__main__":
 
     with suppress():
         print("pickle bytesio->ToTensor()->decode_jpeg()->Transforms()")
-        dp = with_DL(pickle_bytesio_dp.map(bytesio_to_tensor).map(decode).map(ClassificationPresetTrain(on="tensor")))
+        dp = with_DL(pickle_bytesio_dp.map(bytesio_to_tensor).map(decode).map(ClassificationPresetTrain(on="tensor")), dl="v1")
+        bench(iterate_one_epoch, inp=dp, unit="m")
+
+    with suppress():
+        print("pickle bytesio->ToTensor()->decode_jpeg()->Transforms()")
+        dp = with_DL(pickle_bytesio_dp.map(bytesio_to_tensor).map(decode).map(ClassificationPresetTrain(on="tensor")), dl="v2")
         bench(iterate_one_epoch, inp=dp, unit="m")
 
     with suppress():

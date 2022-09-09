@@ -224,8 +224,9 @@ def make_ffcv_dataloader(*, root, transforms, encoded):
     )
 
 
-def with_DL(obj):
+def with_DL(obj, dl="default"):
     # Wrap obj in a data-loader iff --num-workers > 0
+    # Also enables shuffling for some datasets when it can only be done properly here
 
     if args.num_workers == 0:
         if isinstance(obj, wds.WebDataset):
@@ -235,12 +236,19 @@ def with_DL(obj):
     batch_size = 16 if args.num_workers > 0 else 1
 
     if isinstance(obj, torch.utils.data.datapipes.datapipe.IterDataPipe):
-        obj = obj.batch(batch_size=batch_size)
-        return DataLoader2(
-            obj,
-            datapipe_adapter_fn=adapter.Shuffle(),
-            reading_service=MultiProcessingReadingService(num_workers=args.num_workers),
-        )
+        if dl.lower() in ("default", "v2"):
+            obj = obj.batch(batch_size=batch_size)
+            return DataLoader2(
+                obj,
+                datapipe_adapter_fn=adapter.Shuffle(),
+                reading_service=MultiProcessingReadingService(num_workers=args.num_workers),
+            )
+        elif dl.lower() == "v1":
+            return data.DataLoader(
+                obj, batch_size=batch_size, collate_fn=lambda x: x, num_workers=args.num_workers, shuffle=True
+            )
+        else:
+            raise ValueError("Bad dl, got {dl}")
     elif isinstance(obj, ImageFolder):
         return data.DataLoader(
             obj, batch_size=batch_size, collate_fn=lambda x: x, num_workers=args.num_workers, shuffle=True

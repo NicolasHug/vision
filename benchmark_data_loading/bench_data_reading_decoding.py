@@ -19,7 +19,11 @@ if __name__ == "__main__":
 
     with suppress():
         print("pickle bytesio->ToTensor()->decode_jpeg()")
-        bench(iterate_one_epoch, inp=with_DL(pickle_bytesio_dp.map(bytesio_to_tensor).map(decode)))
+        bench(iterate_one_epoch, inp=with_DL(pickle_bytesio_dp.map(bytesio_to_tensor).map(decode), dl="v1"))
+
+    with suppress():
+        print("pickle bytesio->ToTensor()->decode_jpeg()")
+        bench(iterate_one_epoch, inp=with_DL(pickle_bytesio_dp.map(bytesio_to_tensor).map(decode), dl="v2"))
 
     with suppress():
         print("torch bytesio->ToTensor()->decode_jpeg()")
