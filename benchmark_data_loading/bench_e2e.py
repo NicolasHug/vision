@@ -1,4 +1,5 @@
-from bench_data_reading import pickle_bytesio_dp, wds
+from bench_data_reading import pickle_bytesio_dp, torch_bytesio_dp, wds
+from bench_data_reading_decoding import pickle_decoded_dp, torch_decoded_dp
 from bench_transforms import ClassificationPresetTrain
 from common import ARCHIVE_ROOT, args, bench, bytesio_to_tensor, decode, iterate_one_epoch, JPEG_FILES_ROOT, suppress
 from dataset_helpers import make_dp, make_ffcv_dataloader, make_mapstyle, with_DL

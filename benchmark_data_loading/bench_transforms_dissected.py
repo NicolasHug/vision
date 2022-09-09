@@ -47,7 +47,9 @@ class ClassificationPresetTrain:
 
         if autoaugment:
             trans += [
-                transforms.autoaugment.AutoAugment(policy=transforms.AutoAugmentPolicy.IMAGENET, interpolation=transforms.InterpolationMode.BILINEAR)
+                transforms.autoaugment.AutoAugment(
+                    policy=transforms.AutoAugmentPolicy.IMAGENET, interpolation=transforms.InterpolationMode.BILINEAR
+                )
             ]
 
         if on == "pil":
