@@ -17,7 +17,7 @@ from ffcv.loader import Loader as FFCVLoader, OrderOption
 from ffcv.pipeline.operation import Operation
 from ffcv.transforms import NormalizeImage, RandomHorizontalFlip, ToTensor, ToTorchImage
 from torch.utils import data
-from torchdata.dataloader2 import adapter, DataLoader2, MultiProcessingReadingService
+from torchdata.dataloader2 import adapter, DataLoader2, PrototypeMultiProcessingReadingService
 from torchdata.datapipes.iter import FileLister, FileOpener, Header, IterDataPipe, TarArchiveLoader
 from torchvision.datasets import ImageFolder
 
@@ -224,6 +224,14 @@ def make_ffcv_dataloader(*, root, transforms, encoded):
     )
 
 
+# TODO: For now, this should be used with this branch of TorchData (https://github.com/pytorch/data/pull/815)
+def post_adapter_fn(dp, n_prefetch_total=20):
+    """
+    Prefetching buffer at the end of DataLoader2
+    """
+    return dp.prefetch(n_prefetch_total)
+
+
 def with_DL(obj, dl="default"):
     # Wrap obj in a data-loader iff --num-workers > 0
     # Also enables shuffling for some datasets when it can only be done properly here
@@ -238,10 +246,12 @@ def with_DL(obj, dl="default"):
     if isinstance(obj, torch.utils.data.datapipes.datapipe.IterDataPipe):
         if dl.lower() in ("default", "v2"):
             obj = obj.batch(batch_size=batch_size)
+            n_prefetch_worker = 10  # Prefetching at each worker level
             return DataLoader2(
-                obj,
+                obj.prefetch(n_prefetch_worker),
                 datapipe_adapter_fn=adapter.Shuffle(),
-                reading_service=MultiProcessingReadingService(num_workers=args.num_workers),
+                reading_service=PrototypeMultiProcessingReadingService(num_workers=args.num_workers,
+                                                                       post_adapter_fn=post_adapter_fn),
             )
         elif dl.lower() == "v1":
             return data.DataLoader(
