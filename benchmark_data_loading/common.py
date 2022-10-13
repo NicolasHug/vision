@@ -24,6 +24,8 @@ parser.add_argument("--tiny", action="store_true")
 parser.add_argument("--num-workers", type=int, default=0)
 parser.add_argument("--limit", type=int, default=None, help="Load at most `limit` samples")
 parser.add_argument("--archive-size", type=int, default=500, help="Number of samples in each archive.")
+parser.add_argument("--prefetch-worker", type=int, default=2, help="")
+parser.add_argument("--prefetch-main", type=int, default=0, help="")
 args = parser.parse_args()
 
 print(args)
@@ -44,12 +46,15 @@ def bench(f, inp, num_exp=3, warmup=1, unit="μ", num_images_per_call=None):
     if num_images_per_call is None:
         num_images_per_call = args.limit or DATASET_SIZE
 
+    get_input = inp if callable(inp) else lambda: inp
+
     # Computes PER IMAGE median times
     for _ in range(warmup):
-        f(inp)
+        f(get_input())
 
     times = []
     for _ in range(num_exp):
+        inp = get_input()
         start = perf_counter()
         f(inp)
         end = perf_counter()
@@ -114,6 +119,11 @@ def decode(encoded_tensor):
 
 def bytesio_to_tensor(bytesio):
     return torch.frombuffer(bytesio.getbuffer(), dtype=torch.uint8)
+
+import io
+def bytes_to_tensor(bytes):
+    # TODO: this might involve an extra copy
+    return torch.frombuffer(io.BytesIO(bytes).getbuffer(), dtype=torch.uint8)
 
 
 @contextlib.contextmanager

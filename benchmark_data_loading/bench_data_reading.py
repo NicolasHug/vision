@@ -23,48 +23,48 @@ torch_tensor_dp = make_dp(root=ARCHIVE_ROOT, archive="torch", archive_content="t
 
 if __name__ == "__main__":
 
-    with suppress():
-        print("File-based MapStyle")
-        bench(iterate_one_epoch, with_DL(mapstyle_ds))
+    # with suppress():
+    #     print("File-based MapStyle")
+    #     bench(iterate_one_epoch, with_DL(mapstyle_ds))
+
+    # with suppress():
+    #     print("File-based DP")
+    #     bench(iterate_one_epoch, with_DL(no_archive_dp))
+
+    # with suppress():
+    #     print("tar archives (WebDataset)")
+    #     bench(iterate_one_epoch, with_DL(wds))
+
+    # with suppress():
+    #     print("tar archives")
+    #     bench(iterate_one_epoch, with_DL(tar_dp))
+
+    # with suppress():
+    #     print("pickle bytesio")
+    #     bench(iterate_one_epoch, with_DL(pickle_bytesio_dp))
+
+    # with suppress():
+    #     print("pickle bytesio->ToTensor()")
+    #     bench(iterate_one_epoch, with_DL(pickle_bytesio_dp.map(bytesio_to_tensor), dl="v1"))
 
     with suppress():
-        print("File-based DP")
-        bench(iterate_one_epoch, with_DL(no_archive_dp))
-
-    with suppress():
-        print("tar archives (WebDataset)")
-        bench(iterate_one_epoch, with_DL(wds))
-
-    with suppress():
-        print("tar archives")
-        bench(iterate_one_epoch, with_DL(tar_dp))
-
-    with suppress():
-        print("pickle bytesio")
-        bench(iterate_one_epoch, with_DL(pickle_bytesio_dp))
-
-    with suppress():
-        print("pickle bytesio->ToTensor()")
-        bench(iterate_one_epoch, with_DL(pickle_bytesio_dp.map(bytesio_to_tensor), dl="v1"))
-
-    with suppress():
-        print("pickle bytesio->ToTensor()")
+        print("pickle bytesio->ToTensor() DLV2")
         bench(iterate_one_epoch, with_DL(pickle_bytesio_dp.map(bytesio_to_tensor), dl="v2"))
 
-    with suppress():
-        print("pickle tensor")
-        bench(iterate_one_epoch, with_DL(pickle_tensor_dp))
+    # with suppress():
+    #     print("pickle tensor")
+    #     bench(iterate_one_epoch, with_DL(pickle_tensor_dp))
 
-    with suppress():
-        print("torch bytesio")
-        bench(iterate_one_epoch, with_DL(torch_bytesio_dp))
+    # with suppress():
+    #     print("torch bytesio")
+    #     bench(iterate_one_epoch, with_DL(torch_bytesio_dp))
 
-    with suppress():
-        print("torch bytesio->ToTensor()")
-        bench(iterate_one_epoch, with_DL(torch_bytesio_dp.map(bytesio_to_tensor)))
+    # with suppress():
+    #     print("torch bytesio->ToTensor()")
+    #     bench(iterate_one_epoch, with_DL(torch_bytesio_dp.map(bytesio_to_tensor)))
 
-    with suppress():
-        print("torch tensor")
-        bench(iterate_one_epoch, with_DL(torch_tensor_dp))
+    # with suppress():
+    #     print("torch tensor")
+    #     bench(iterate_one_epoch, with_DL(torch_tensor_dp))
 
-    print()
+    # print()

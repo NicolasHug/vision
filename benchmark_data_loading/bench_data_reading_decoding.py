@@ -13,9 +13,9 @@ else:
     pickle_decoded_dp = torch_decoded_dp = ffcv_decoded = None
 
 if __name__ == "__main__":
-    with suppress():
-        print("tar archives (WebDataset) bytesio->ToTensor()->decode_jpeg()")
-        bench(iterate_one_epoch, inp=with_DL(wds.map(bytesio_to_tensor).map(decode)))
+    # with suppress():
+    #     print("tar archives (WebDataset) bytesio->ToTensor()->decode_jpeg()")
+    #     bench(iterate_one_epoch, inp=with_DL(wds.map(bytesio_to_tensor).map(decode)))
 
     with suppress():
         print("pickle bytesio->ToTensor()->decode_jpeg()")
@@ -25,20 +25,20 @@ if __name__ == "__main__":
         print("pickle bytesio->ToTensor()->decode_jpeg()")
         bench(iterate_one_epoch, inp=with_DL(pickle_bytesio_dp.map(bytesio_to_tensor).map(decode), dl="v2"))
 
-    with suppress():
-        print("torch bytesio->ToTensor()->decode_jpeg()")
-        bench(iterate_one_epoch, inp=with_DL(torch_bytesio_dp.map(bytesio_to_tensor).map(decode)))
+    # with suppress():
+    #     print("torch bytesio->ToTensor()->decode_jpeg()")
+    #     bench(iterate_one_epoch, inp=with_DL(torch_bytesio_dp.map(bytesio_to_tensor).map(decode)))
 
-    with suppress():
-        print("FFCV loading + decoding")
-        bench(iterate_one_epoch, inp=ffcv_encoded)
+    # with suppress():
+    #     print("FFCV loading + decoding")
+    #     bench(iterate_one_epoch, inp=ffcv_encoded)
 
-    if args.tiny:
-        print("pickle pre-decoded")
-        bench(iterate_one_epoch, inp=with_DL(pickle_decoded_dp))
+    # if args.tiny:
+    #     print("pickle pre-decoded")
+    #     bench(iterate_one_epoch, inp=with_DL(pickle_decoded_dp))
 
-        print("torch pre-decoded")
-        bench(iterate_one_epoch, inp=with_DL(torch_decoded_dp))
+    #     print("torch pre-decoded")
+    #     bench(iterate_one_epoch, inp=with_DL(torch_decoded_dp))
 
-        print("FFCV loading (pre-decoded)")
-        bench(iterate_one_epoch, inp=ffcv_decoded)
+    #     print("FFCV loading (pre-decoded)")
+    #     bench(iterate_one_epoch, inp=ffcv_decoded)
