@@ -7,10 +7,17 @@ def just_read_the_file(img_path):
         return f.read()
 
 
+def drop_file_name(data):
+    return data[1]
+
+def read_stream_wrapper(stream_wrapper):
+    return stream_wrapper.read()
+
+
 mapstyle_ds = make_mapstyle(root=JPEG_FILES_ROOT, loader=just_read_the_file)
 no_archive_dp = make_dp(root=JPEG_FILES_ROOT, archive=None).map(just_read_the_file)
 
-tar_dp = make_dp(root=ARCHIVE_ROOT, archive="tar")
+tar_dp = make_dp(root=ARCHIVE_ROOT, archive="tar").map(drop_file_name).map(read_stream_wrapper)
 
 wds = make_webdataset(root=ARCHIVE_ROOT)
 

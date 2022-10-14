@@ -118,12 +118,12 @@ def decode(encoded_tensor):
 
 
 def bytesio_to_tensor(bytesio):
+    # TODO: does torch.frombuffer involve an extra copy?
     return torch.frombuffer(bytesio.getbuffer(), dtype=torch.uint8)
 
 import io
-def bytes_to_tensor(bytes):
-    # TODO: this might involve an extra copy
-    return torch.frombuffer(io.BytesIO(bytes).getbuffer(), dtype=torch.uint8)
+def stream_wrapper_to_tensor(stream_wrapper):
+    return bytesio_to_tensor(io.BytesIO(stream_wrapper.read()))
 
 
 @contextlib.contextmanager

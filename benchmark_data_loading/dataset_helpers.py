@@ -90,10 +90,6 @@ def _make_dp_from_archive(*, root, archive, archive_content, num_archives=None):
     return dp
 
 
-def _read_tar_entry(data):
-    _, io_stream = data
-    return io_stream.read()
-
 
 def _make_dp_from_tars(*, root, num_archives=None):
 
@@ -105,8 +101,6 @@ def _make_dp_from_tars(*, root, num_archives=None):
     dp = TarArchiveLoader(dp, mode="r:")
     dp = dp.shuffle(buffer_size=args.archive_size)  # intra-archive shuffling
     dp = dp.sharding_filter()
-
-    dp = dp.map(_read_tar_entry)
     return dp
 
 
