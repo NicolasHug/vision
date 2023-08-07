@@ -42,7 +42,9 @@ class BoundingBoxes(Datapoint):
     canvas_size: Tuple[int, int]
 
     @classmethod
-    def _wrap(cls, tensor: torch.Tensor, *, format: Union[BoundingBoxFormat, str], canvas_size: Tuple[int, int]) -> BoundingBoxes:  # type: ignore[override]
+    def _wrap(
+        cls, tensor: torch.Tensor, *, format: Union[BoundingBoxFormat, str], canvas_size: Tuple[int, int]
+    ) -> BoundingBoxes:
         if isinstance(format, str):
             format = BoundingBoxFormat[format.upper()]
         bounding_boxes = tensor.as_subclass(cls)
